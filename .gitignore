@@ -10,6 +10,8 @@ dist/
 pnpm-lock.yaml
 .zuckerman/
 .research/
+.cursor/
+.cursor-rules/
 
 # TypeScript compilation artifacts (should only exist in dist/)
 src/**/*.js
