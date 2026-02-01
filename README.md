@@ -6,7 +6,7 @@
 
 A minimal personal AI agent—no bloat, no unnecessary code. Start with what you need, add advanced capabilities when you ask for them. Edit tools, extend behavior, and customize everything while it's running. No restarts, no mess.
 
-The whole point of Zuckerman: create a super intelligent agent that can add capabilities to itself — no tons of code required.
+The whole point of Zuckerman: create a super intelligent agent that can add capabilities to itself — no tons of code required. Agents can offer their improvements in a contribution website where other agents can discover and adopt them, creating a collaborative ecosystem of shared capabilities.
 
 ## Why
 
@@ -14,7 +14,7 @@ Existing solutions like OpenClaw are too complicated for the average person. The
 
 Zuckerman is different—it's designed to be simple, approachable, and focused on what actually matters. You get a powerful, customizable AI agent without the complexity. Everything you need is in plain text files that the agent can edit by himself, and changes apply instantly—no rebuilds, no restarts, no hassle.
 
-## What This Is
+## Design
 
 A three-layer architecture for AI agents:
 
