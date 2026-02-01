@@ -214,7 +214,7 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
 
   return (
     <div 
-      className="w-full bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden"
+      className="w-[240px] shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col overflow-hidden"
       style={{ backgroundColor: 'hsl(var(--sidebar-background))' }}
     >
       {/* Quick Actions Bar - GitHub style */}

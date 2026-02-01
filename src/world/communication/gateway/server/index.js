@@ -71,6 +71,11 @@ export async function startGatewayServer(options = {}) {
         });
     });
     return new Promise((resolve, reject) => {
+        // Set up error handler BEFORE calling listen() to catch EADDRINUSE errors
+        httpServer.on("error", (err) => {
+            reject(err);
+        });
+        
         httpServer.listen(port, host, () => {
             console.log(`[Gateway] Server listening on ws://${host}:${port}`);
             resolve({
@@ -83,9 +88,6 @@ export async function startGatewayServer(options = {}) {
                 },
                 port,
             });
-        });
-        httpServer.on("error", (err) => {
-            reject(err);
         });
     });
 }

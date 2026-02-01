@@ -1,7 +1,6 @@
-import { WebSocket } from "ws";
-
 /**
  * Check if gateway is running by attempting to connect
+ * Uses browser's native WebSocket API
  */
 export async function isGatewayRunning(host: string, port: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -13,13 +12,13 @@ export async function isGatewayRunning(host: string, port: number): Promise<bool
       resolve(false);
     }, 1000);
 
-    ws.on("open", () => {
+    ws.addEventListener("open", () => {
       clearTimeout(timeout);
       ws.close();
       resolve(true);
     });
 
-    ws.on("error", () => {
+    ws.addEventListener("error", () => {
       clearTimeout(timeout);
       resolve(false);
     });

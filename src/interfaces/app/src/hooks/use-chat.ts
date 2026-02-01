@@ -1,11 +1,28 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import type { GatewayClient } from "../core/gateway/client";
+import type { Session, SessionType } from "../types/session";
 import type { Message } from "../types/message";
+import { SessionService } from "../core/sessions/session-service";
 import { MessageService } from "../core/messages/message-service";
 import { AgentService } from "../core/agents/agent-service";
-import { SessionService } from "../core/sessions/session-service";
+import { getStorageItem, setStorageItem } from "../core/storage/local-storage";
 
-export interface UseMessagesReturn {
+const ACTIVE_SESSIONS_STORAGE_KEY = "zuckerman:active-sessions";
+
+export interface UseChatReturn {
+  // Sessions
+  sessions: Session[];
+  currentSessionId: string | null;
+  setCurrentSessionId: (sessionId: string | null) => void;
+  createSession: (type: SessionType, agentId: string, label?: string) => Promise<Session>;
+  loadSessions: () => Promise<void>;
+
+  // Active sessions (UI state)
+  activeSessionIds: Set<string>;
+  addToActiveSessions: (sessionId: string) => void;
+  removeFromActiveSessions: (sessionId: string) => void;
+
+  // Messages
   messages: Message[];
   isSending: boolean;
   sendMessage: (message: string) => Promise<void>;
@@ -13,27 +30,66 @@ export interface UseMessagesReturn {
 }
 
 /**
- * Hook for managing messages - handles loading, sending, polling, and deduplication
+ * Consolidated hook for chat feature:
+ * - Session management
+ * - Active sessions UI state
+ * - Message loading and sending
  */
-export function useMessages(
+export function useChat(
   gatewayClient: GatewayClient | null,
-  sessionId: string | null,
+  currentAgentId: string | null,
   agentId: string | null
-): UseMessagesReturn {
+): UseChatReturn {
+  // Sessions state
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Active sessions state (UI)
+  const [activeSessionIds, setActiveSessionIds] = useState<Set<string>>(() => {
+    const stored = getStorageItem<string[]>(ACTIVE_SESSIONS_STORAGE_KEY, []);
+    if (stored.length > 0) {
+      return new Set(stored);
+    }
+    return currentSessionId ? new Set([currentSessionId]) : new Set<string>();
+  });
+
+  // Messages state
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
-  
+
+  // Refs for messages
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const lastMessageCountRef = useRef<number>(0);
-  const currentSessionIdRef = useRef<string | null>(sessionId);
+  const currentSessionIdRef = useRef<string | null>(currentSessionId);
   const streamingMessageRef = useRef<{ runId: string; content: string } | null>(null);
 
-  // Update ref when sessionId changes
+  // Update refs when sessionId changes
   useEffect(() => {
-    currentSessionIdRef.current = sessionId;
-  }, [sessionId]);
+    currentSessionIdRef.current = currentSessionId;
+  }, [currentSessionId]);
+
+  // Sync currentSessionId with active sessions
+  useEffect(() => {
+    if (currentSessionId) {
+      setActiveSessionIds((prev) => {
+        if (prev.has(currentSessionId)) return prev;
+        const updated = new Set(prev);
+        updated.add(currentSessionId);
+        return updated;
+      });
+    }
+  }, [currentSessionId]);
+
+  // Persist active sessions to localStorage
+  useEffect(() => {
+    setStorageItem(ACTIVE_SESSIONS_STORAGE_KEY, Array.from(activeSessionIds));
+  }, [activeSessionIds]);
 
   // Memoize services
+  const sessionService = useMemo(
+    () => (gatewayClient ? new SessionService(gatewayClient) : null),
+    [gatewayClient]
+  );
   const messageService = useMemo(
     () => (gatewayClient ? new MessageService(gatewayClient) : null),
     [gatewayClient]
@@ -42,17 +98,69 @@ export function useMessages(
     () => (gatewayClient ? new AgentService(gatewayClient) : null),
     [gatewayClient]
   );
-  const sessionService = useMemo(
-    () => (gatewayClient ? new SessionService(gatewayClient) : null),
-    [gatewayClient]
+
+  // Session management
+  const createSession = useCallback(
+    async (type: SessionType, agentId: string, label?: string): Promise<Session> => {
+      if (!gatewayClient?.isConnected() || !sessionService) {
+        throw new Error("Gateway not connected");
+      }
+
+      const newSession = await sessionService.createSession(type, agentId, label);
+      setSessions((prev) => [...prev, newSession]);
+      setCurrentSessionId(newSession.id);
+      return newSession;
+    },
+    [gatewayClient, sessionService]
   );
 
-  /**
-   * Load messages from the session
-   */
+  const loadSessions = useCallback(async () => {
+    if (!gatewayClient?.isConnected() || !sessionService) {
+      return;
+    }
+
+    try {
+      const loadedSessions = await sessionService.listSessions();
+      setSessions(loadedSessions);
+
+      if (loadedSessions.length > 0 && !currentSessionId) {
+        setCurrentSessionId(loadedSessions[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to load sessions:", error);
+    }
+  }, [gatewayClient, sessionService, currentSessionId]);
+
+  useEffect(() => {
+    if (gatewayClient?.isConnected() && currentAgentId) {
+      loadSessions();
+    } else if (gatewayClient?.isConnected() && !currentAgentId && sessions.length === 0) {
+      loadSessions();
+    }
+  }, [gatewayClient, currentAgentId, loadSessions, sessions.length]);
+
+  // Active sessions management
+  const addToActiveSessions = useCallback((sessionId: string) => {
+    setActiveSessionIds((prev) => {
+      if (prev.has(sessionId)) return prev;
+      const updated = new Set(prev);
+      updated.add(sessionId);
+      return updated;
+    });
+  }, []);
+
+  const removeFromActiveSessions = useCallback((sessionId: string) => {
+    setActiveSessionIds((prev) => {
+      if (!prev.has(sessionId)) return prev;
+      const updated = new Set(prev);
+      updated.delete(sessionId);
+      return updated;
+    });
+  }, []);
+
+  // Message management
   const loadMessages = useCallback(async () => {
-    // Use sessionId prop directly, fallback to ref for backwards compatibility
-    const currentSession = sessionId || currentSessionIdRef.current;
+    const currentSession = currentSessionId || currentSessionIdRef.current;
     if (!currentSession || !gatewayClient?.isConnected() || !messageService) {
       setMessages([]);
       return;
@@ -61,52 +169,45 @@ export function useMessages(
     try {
       const loadedMessages = await messageService.loadMessages(currentSession);
       const deduplicated = messageService.deduplicateMessages(loadedMessages);
-      
-      // Best practice: Only update state if messages actually changed to prevent scroll jumps
+
       setMessages((prev) => {
-        // If count changed, definitely update
         if (deduplicated.length !== prev.length) {
           lastMessageCountRef.current = deduplicated.length;
           return deduplicated;
         }
-        
-        // If count is same, check if content changed (for streaming/polling updates)
-        // Compare messages by ID/timestamp to detect actual changes
+
         if (deduplicated.length > 0 && prev.length > 0) {
           const prevLast = prev[prev.length - 1];
           const newLast = deduplicated[deduplicated.length - 1];
-          
-          // If last message changed (timestamp or content), update
-          if (!prevLast || !newLast || 
-              prevLast.timestamp !== newLast.timestamp || 
-              prevLast.content !== newLast.content) {
+
+          if (
+            !prevLast ||
+            !newLast ||
+            prevLast.timestamp !== newLast.timestamp ||
+            prevLast.content !== newLast.content
+          ) {
             return deduplicated;
           }
         }
-        
-        // No changes detected - keep previous state to avoid unnecessary re-renders and scroll jumps
+
         return prev;
       });
-      
-      // Update count ref if we actually updated
+
       if (deduplicated.length !== lastMessageCountRef.current) {
         lastMessageCountRef.current = deduplicated.length;
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      const isSessionNotFound = errorMessage.includes("not found") || errorMessage.includes("Session");
-      
+      const isSessionNotFound =
+        errorMessage.includes("not found") || errorMessage.includes("Session");
+
       if (isSessionNotFound) {
         setMessages([]);
         lastMessageCountRef.current = 0;
       }
-      // Silently handle other errors - keep existing messages
     }
-  }, [gatewayClient, messageService, sessionId]);
+  }, [gatewayClient, messageService, currentSessionId]);
 
-  /**
-   * Stop polling for message updates
-   */
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -114,11 +215,8 @@ export function useMessages(
     }
   }, []);
 
-  /**
-   * Start polling for message updates
-   */
   const startPolling = useCallback(() => {
-    if (pollingRef.current) return; // Already polling
+    if (pollingRef.current) return;
 
     pollingRef.current = setInterval(async () => {
       const currentSession = currentSessionIdRef.current;
@@ -126,8 +224,6 @@ export function useMessages(
         return;
       }
 
-      // Don't poll during sending - sendMessage handles its own polling
-      // Also don't poll if streaming is active (streaming events handle updates)
       if (isSending || streamingMessageRef.current) {
         return;
       }
@@ -135,46 +231,40 @@ export function useMessages(
       try {
         const sessionState = await sessionService.getSession(currentSession);
         const currentCount = sessionState.messages?.length || 0;
-        
-        // Best practice: Only reload if count changed (new messages added)
-        // This prevents unnecessary updates that cause scroll jumps
+
         if (currentCount !== lastMessageCountRef.current) {
           await loadMessages();
         }
-        // If count is same, skip reload to preserve scroll position
       } catch (error) {
-        // Silently handle polling errors
         const errorMessage = error instanceof Error ? error.message : String(error);
-        const isSessionNotFound = errorMessage.includes("not found") || errorMessage.includes("Session");
-        
+        const isSessionNotFound =
+          errorMessage.includes("not found") || errorMessage.includes("Session");
+
         if (isSessionNotFound) {
           stopPolling();
           setMessages([]);
           lastMessageCountRef.current = 0;
         }
       }
-    }, 5000); // Poll every 5 seconds when not sending (reduced frequency)
+    }, 5000);
   }, [gatewayClient, sessionService, loadMessages, isSending, stopPolling]);
 
-  // Load messages when session changes (but not if we're currently sending)
   useEffect(() => {
-    if (!isSending && sessionId) {
-      // Clear messages immediately when session changes to avoid showing stale data
+    if (!isSending && currentSessionId) {
       setMessages([]);
       loadMessages();
-    } else if (!sessionId) {
-      // Clear messages if no session selected
+    } else if (!currentSessionId) {
       setMessages([]);
     }
-  }, [sessionId, loadMessages, isSending]);
+  }, [currentSessionId, loadMessages, isSending]);
 
-  // Set up streaming event listener
+  // Streaming event listener
   useEffect(() => {
     if (!gatewayClient) return;
 
     const handleStreamEvent = (event: { event: string; payload?: unknown }) => {
       if (!event.event.startsWith("agent.stream.")) return;
-      
+
       const eventType = event.event.replace("agent.stream.", "");
       const payload = event.payload as {
         sessionId?: string;
@@ -183,33 +273,25 @@ export function useMessages(
         tool?: string;
         toolArgs?: Record<string, unknown>;
         toolResult?: unknown;
-        response?: string;
-        tokensUsed?: number;
-        toolsUsed?: string[];
       };
 
-      // Only handle events for current session
       if (payload.sessionId !== currentSessionIdRef.current) return;
 
       if (eventType === "token" && payload.token) {
         const token = payload.token;
-        // Update streaming message with new token
         setMessages((prev) => {
           const newMessages = [...prev];
-          // Find or create the streaming assistant message
           let streamingIndex = newMessages.findIndex(
             (msg) => msg.role === "assistant" && (msg as any).streamingRunId === payload.runId
           );
-          
+
           if (streamingIndex === -1) {
-            // Remove thinking indicator and add new assistant message
             const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
             if (thinkingIndex !== -1) {
               newMessages.splice(thinkingIndex, 1);
             }
-            
+
             const runId = payload.runId || `stream-${Date.now()}`;
-            // Initialize ref with first token
             streamingMessageRef.current = {
               runId,
               content: token,
@@ -221,22 +303,20 @@ export function useMessages(
               streamingRunId: runId,
             } as Message & { streamingRunId?: string });
           } else {
-            // Update existing streaming message
             const existingMessage = newMessages[streamingIndex];
             const currentContent = existingMessage.content || "";
-            
-            // Ensure ref is initialized and matches current message content
-            if (!streamingMessageRef.current || streamingMessageRef.current.runId !== payload.runId) {
+
+            if (
+              !streamingMessageRef.current ||
+              streamingMessageRef.current.runId !== payload.runId
+            ) {
               streamingMessageRef.current = {
                 runId: payload.runId || `stream-${Date.now()}`,
                 content: currentContent,
               };
             }
-            
-            // Append new token to ref
+
             streamingMessageRef.current.content += token;
-            
-            // Update message with ref content (single source of truth)
             newMessages[streamingIndex] = {
               ...existingMessage,
               content: streamingMessageRef.current.content,
@@ -245,15 +325,12 @@ export function useMessages(
           return newMessages;
         });
       } else if (eventType === "tool.call" && payload.tool) {
-        // Add tool call indicator
         setMessages((prev) => {
           const newMessages = [...prev];
-          // Remove thinking indicator if present
           const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
           if (thinkingIndex !== -1) {
             newMessages.splice(thinkingIndex, 1);
           }
-          // Add tool call message
           newMessages.push({
             role: "assistant",
             content: `🔧 Calling tool: ${payload.tool}${payload.toolArgs ? ` with args: ${JSON.stringify(payload.toolArgs)}` : ""}`,
@@ -262,13 +339,11 @@ export function useMessages(
           return newMessages;
         });
       } else if (eventType === "tool.result" && payload.tool) {
-        // Update tool result
         setMessages((prev) => {
           const newMessages = [...prev];
-          // Find the last tool call message and update it
           for (let i = newMessages.length - 1; i >= 0; i--) {
             if (newMessages[i].content.includes(`Calling tool: ${payload.tool}`)) {
-              const resultStr = payload.toolResult 
+              const resultStr = payload.toolResult
                 ? JSON.stringify(payload.toolResult).substring(0, 200)
                 : "completed";
               newMessages[i] = {
@@ -281,25 +356,20 @@ export function useMessages(
           return newMessages;
         });
       } else if (eventType === "done") {
-        // Finalize the message
         streamingMessageRef.current = null;
         setIsSending(false);
-        // Reload messages to get the final state
         loadMessages();
       }
     };
 
-    // Add event listener
     const removeListener = gatewayClient.addEventListener(handleStreamEvent);
-
     return () => {
       removeListener();
     };
   }, [gatewayClient, loadMessages]);
 
-  // Manage polling based on connection and session
   useEffect(() => {
-    if (gatewayClient?.isConnected() && sessionId) {
+    if (gatewayClient?.isConnected() && currentSessionId) {
       startPolling();
     } else {
       stopPolling();
@@ -308,11 +378,8 @@ export function useMessages(
     return () => {
       stopPolling();
     };
-  }, [gatewayClient, sessionId, startPolling, stopPolling]);
+  }, [gatewayClient, currentSessionId, startPolling, stopPolling]);
 
-  /**
-   * Send a message and wait for response
-   */
   const sendMessage = useCallback(
     async (messageText: string) => {
       if (!gatewayClient || !messageService || !agentService || !sessionService) {
@@ -323,7 +390,6 @@ export function useMessages(
         throw new Error("Gateway not connected");
       }
 
-      // Resolve agent ID
       let currentAgentId = agentId;
       if (!currentAgentId) {
         const agents = await agentService.listAgents();
@@ -333,19 +399,17 @@ export function useMessages(
         currentAgentId = agents[0];
       }
 
-      // Resolve session ID
-      let currentSessionId = sessionId;
+      let currentSessionId = currentSessionIdRef.current;
       if (!currentSessionId) {
         const newSession = await sessionService.createSession("main", currentAgentId);
         currentSessionId = newSession.id;
         currentSessionIdRef.current = currentSessionId;
+        setCurrentSessionId(currentSessionId);
       }
 
-      // Set sending state
       setIsSending(true);
       const userMessageTimestamp = Date.now();
 
-      // Optimistically add user message
       const userMessage: Message = {
         role: "user",
         content: messageText,
@@ -353,7 +417,6 @@ export function useMessages(
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      // Add thinking indicator
       const thinkingMessage: Message = {
         role: "thinking",
         content: "",
@@ -362,13 +425,10 @@ export function useMessages(
       setMessages((prev) => [...prev, thinkingMessage]);
 
       try {
-        // Send message to backend
         await messageService.sendMessage(currentSessionId, currentAgentId, messageText);
 
-        // Poll for response (no timeout - wait indefinitely)
         let attempts = 0;
-        const maxAttempts = Infinity; // No timeout limit
-        const pollInterval = 300; // 300ms
+        const pollInterval = 300;
 
         const checkForResponse = async (): Promise<void> => {
           return new Promise((resolve) => {
@@ -376,50 +436,39 @@ export function useMessages(
               attempts++;
 
               try {
-                // Check connection
                 if (!gatewayClient?.isConnected()) {
-                  // Don't timeout on connection loss - keep trying
                   return;
                 }
 
-                // Load messages
                 const loadedMessages = await messageService.loadMessages(currentSessionId);
                 const deduplicated = messageService.deduplicateMessages(loadedMessages);
 
-                // Check for assistant response after user message
                 const hasResponse = deduplicated.some((msg) => {
                   if (msg.role !== "assistant") return false;
                   const msgTimestamp = msg.timestamp || 0;
-                  return msgTimestamp >= userMessageTimestamp - 500; // 500ms buffer
+                  return msgTimestamp >= userMessageTimestamp - 500;
                 });
 
                 if (hasResponse) {
-                  // Update messages (replaces thinking indicator)
                   setMessages(deduplicated);
                   lastMessageCountRef.current = deduplicated.length;
-                  
                   clearInterval(interval);
-                  
-                  // Clear sending state after render
                   requestAnimationFrame(() => {
                     setIsSending(false);
                   });
-                  
                   resolve();
                 }
-                // No timeout - keep polling until response arrives
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
-                const isSessionNotFound = errorMessage.includes("not found") || errorMessage.includes("Session");
-                
-                // Only stop on session not found, not on timeout
+                const isSessionNotFound =
+                  errorMessage.includes("not found") || errorMessage.includes("Session");
+
                 if (isSessionNotFound) {
                   clearInterval(interval);
                   setIsSending(false);
                   setMessages((prev) => prev.filter((msg) => msg.role !== "thinking"));
                   resolve();
                 }
-                // Otherwise keep polling
               }
             }, pollInterval);
           });
@@ -427,22 +476,24 @@ export function useMessages(
 
         await checkForResponse();
       } catch (error) {
-        // Error sending message
         setIsSending(false);
         setMessages((prev) =>
           prev.filter(
             (msg) =>
               msg.role !== "thinking" &&
-              !(msg.role === "user" && msg.content === messageText && Math.abs(msg.timestamp - userMessageTimestamp) < 5000)
+              !(
+                msg.role === "user" &&
+                msg.content === messageText &&
+                Math.abs(msg.timestamp - userMessageTimestamp) < 5000
+              )
           )
         );
         throw error;
       }
     },
-    [gatewayClient, messageService, agentService, sessionService, sessionId, agentId, loadMessages]
+    [gatewayClient, messageService, agentService, sessionService, agentId, loadMessages]
   );
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       stopPolling();
@@ -451,6 +502,14 @@ export function useMessages(
   }, [stopPolling]);
 
   return {
+    sessions,
+    currentSessionId,
+    setCurrentSessionId,
+    createSession,
+    loadSessions,
+    activeSessionIds,
+    addToActiveSessions,
+    removeFromActiveSessions,
     messages,
     isSending,
     sendMessage,

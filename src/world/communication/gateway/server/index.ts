@@ -115,6 +115,14 @@ export async function startGatewayServer(
   });
 
   return new Promise((resolve, reject) => {
+    // Set up error handler BEFORE calling listen() to catch EADDRINUSE errors
+    httpServer.on("error", (err) => {
+      // #region agent log
+      try{appendFileSync('/Users/dvirdaniel/Desktop/zuckerman/.cursor/debug.log',JSON.stringify({location:'gateway/server/index.ts:116',message:'HTTP server error',data:{error:err.message,code:(err as NodeJS.ErrnoException).code},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H'})+'\n');}catch(e){console.error('[DEBUG] Failed to write log:',e);}
+      // #endregion
+      reject(err);
+    });
+
     // #region agent log
     try{appendFileSync('/Users/dvirdaniel/Desktop/zuckerman/.cursor/debug.log',JSON.stringify({location:'gateway/server/index.ts:101',message:'Calling httpServer.listen',data:{host,port},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'H'})+'\n');}catch(e){}
     // #endregion
@@ -133,13 +141,6 @@ export async function startGatewayServer(
         },
         port,
       });
-    });
-
-    httpServer.on("error", (err) => {
-      // #region agent log
-      try{appendFileSync('/Users/dvirdaniel/Desktop/zuckerman/.cursor/debug.log',JSON.stringify({location:'gateway/server/index.ts:116',message:'HTTP server error',data:{error:err.message,code:(err as NodeJS.ErrnoException).code},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'H'})+'\n');}catch(e){console.error('[DEBUG] Failed to write log:',e);}
-      // #endregion
-      reject(err);
     });
   });
 }

@@ -8,14 +8,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useMessages } from "../../../hooks/use-messages";
-import type { AppState } from "../../../types/app-state";
+import type { UseAppReturn } from "../../../hooks/use-app";
 import { MessageItem } from "./components/message-item";
 import { ThinkingIndicator } from "./components/thinking-indicator";
 import { EmptyState } from "./components/empty-state";
 
 interface ChatViewProps {
-  state: AppState;
+  state: UseAppReturn;
   onAction: (action: string, data: any) => void;
 }
 
@@ -27,11 +26,7 @@ export function ChatView({ state, onAction }: ChatViewProps) {
   const shouldAutoScrollRef = useRef<boolean>(true); // Track if we should auto-scroll
   const isUserScrollingRef = useRef<boolean>(false);
 
-  const { messages, isSending, sendMessage } = useMessages(
-    state.gatewayClient,
-    state.currentSessionId,
-    state.currentAgentId
-  );
+  const { messages, isSending, sendMessage } = state;
 
   // Helper function to check if user is at bottom (best practice: exact check)
   const isAtBottom = (element: HTMLDivElement, threshold = 50): boolean => {

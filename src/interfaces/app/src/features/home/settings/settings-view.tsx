@@ -10,11 +10,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { GatewayClient } from "../../../core/gateway/client";
 import { Server, Palette, Settings as SettingsIcon, CheckCircle2, XCircle, Power, Loader2 } from "lucide-react";
-import { useGatewayManager } from "../../../hooks/use-gateway-manager";
+import { useGateway } from "../../../hooks/use-gateway";
 import { GatewayLogsViewer } from "../../../components/gateway-logs-viewer";
 
 interface SettingsProps {
@@ -76,7 +74,17 @@ export function SettingsView({
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [hasChanges, setHasChanges] = useState(false);
   
-  const gatewayManager = useGatewayManager();
+  const {
+    serverStatus,
+    isServerLoading,
+    isServerStarting,
+    isServerStopping,
+    startServer,
+    stopServer,
+    checkServerStatus,
+    startPolling,
+    stopPolling,
+  } = useGateway();
 
   useEffect(() => {
     // Load current settings when component mounts
@@ -85,32 +93,37 @@ export function SettingsView({
       try {
         const parsed = JSON.parse(stored);
         setSettings(parsed);
+        // Check gateway status with loaded settings
+        if (window.electronAPI && parsed.gateway) {
+          checkServerStatus(parsed.gateway.host, parsed.gateway.port);
+        }
       } catch {}
+    } else {
+      // Check gateway status with default settings
+      if (window.electronAPI) {
+        checkServerStatus(settings.gateway.host, settings.gateway.port);
+      }
     }
     setHasChanges(false);
     setConnectionStatus("idle");
-    
-    // Check gateway status on mount
-    if (window.electronAPI) {
-      gatewayManager.checkStatus(settings.gateway.host, settings.gateway.port);
-    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Check gateway status when settings change
   useEffect(() => {
     if (window.electronAPI && activeTab === "gateway") {
-      gatewayManager.checkStatus(settings.gateway.host, settings.gateway.port);
+      checkServerStatus(settings.gateway.host, settings.gateway.port);
       // Start polling when on gateway tab
-      gatewayManager.startPolling(settings.gateway.host, settings.gateway.port, 5000);
+      startPolling(settings.gateway.host, settings.gateway.port, 5000);
     } else {
       // Stop polling when leaving gateway tab
-      gatewayManager.stopPolling();
+      stopPolling();
     }
 
     return () => {
-      gatewayManager.stopPolling();
+      stopPolling();
     };
-  }, [settings.gateway.host, settings.gateway.port, activeTab, gatewayManager]);
+  }, [settings.gateway.host, settings.gateway.port, activeTab, checkServerStatus, startPolling, stopPolling]);
 
   const handleSave = () => {
     localStorage.setItem("zuckerman:settings", JSON.stringify(settings));
@@ -180,215 +193,166 @@ export function SettingsView({
   ];
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden">
+    <div className="flex flex-col flex-1 overflow-hidden bg-background">
       <div className="flex-1 overflow-y-auto">
-        <div className="w-full px-8 py-8">
-          <div className="mb-8 border-b pb-6">
-            <div className="flex items-center gap-2 mb-6">
+        <div className="max-w-4xl mx-auto w-full px-6 py-8">
+          {/* GitHub-style header */}
+          <div className="mb-8 pb-6 border-b border-border">
+            <div className="flex items-center gap-1 mb-6">
               {tabs.map((tab) => (
-                <Button
+                <button
                   key={tab.id}
-                  variant={activeTab === tab.id ? "secondary" : "ghost"}
                   onClick={() => setActiveTab(tab.id)}
-                  className="gap-2"
+                  className={`
+                    px-3 py-1.5 text-sm font-medium rounded-md transition-colors
+                    ${activeTab === tab.id 
+                      ? "bg-accent text-accent-foreground" 
+                      : "text-muted-foreground hover:text-foreground hover:bg-accent/50"}
+                  `}
                 >
-                  {tab.icon}
-                  {tab.label}
-                </Button>
+                  <div className="flex items-center gap-2">
+                    {tab.icon}
+                    {tab.label}
+                  </div>
+                </button>
               ))}
             </div>
-            <h1 className="text-2xl font-semibold mb-2">
+            <h1 className="text-2xl font-semibold text-foreground mb-1">
               {tabs.find(t => t.id === activeTab)?.label}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {activeTab === "gateway" && "Configure how your application connects to the Zuckerman Gateway server."}
-              {activeTab === "appearance" && "Customize how the application looks and feels on your device."}
-              {activeTab === "advanced" && "Configure technical settings and advanced connection behavior."}
+              {activeTab === "gateway" && "Turn the gateway server on or off."}
+              {activeTab === "appearance" && "Customize how the application looks and feels."}
+              {activeTab === "advanced" && "Configure gateway connection settings and advanced options."}
             </p>
           </div>
 
           <div className="space-y-6">
             {activeTab === "gateway" && (
               <React.Fragment>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Gateway Configuration</CardTitle>
-                    <CardDescription>
-                      Configure how your application connects to the Zuckerman Gateway server.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="gateway-host">
-                      Gateway Host
-                    </Label>
-                    <Input
-                      id="gateway-host"
-                      value={settings.gateway.host}
-                      onChange={(e) =>
-                        updateSettings("gateway", { host: e.target.value })
-                      }
-                      placeholder="127.0.0.1"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The hostname or IP address of your Zuckerman Gateway. Default is 127.0.0.1.
+                {/* GitHub-style section */}
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h2 className="text-base font-semibold text-foreground">Gateway Server</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {window.electronAPI 
+                        ? "Control the gateway server process."
+                        : "Gateway management requires Electron API."}
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="gateway-port">
-                      Gateway Port
-                    </Label>
-                    <Input
-                      id="gateway-port"
-                      type="number"
-                      value={settings.gateway.port}
-                      onChange={(e) =>
-                        updateSettings("gateway", {
-                          port: parseInt(e.target.value) || 18789,
-                        })
-                      }
-                      placeholder="18789"
-                      min="1"
-                      max="65535"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      The port number the gateway is listening on. Default is 18789.
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <div className="flex items-start gap-6">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Checkbox
-                            id="gateway-auto-start"
-                            checked={settings.gateway.autoStart}
-                            onCheckedChange={(checked) =>
-                              updateSettings("gateway", {
-                                autoStart: checked === true,
-                              })
-                            }
-                          />
-                          <Label htmlFor="gateway-auto-start" className="cursor-pointer">
-                            Auto-start gateway on app launch
-                          </Label>
-                        </div>
-                        <p className="text-xs text-muted-foreground ml-6">
-                          Automatically start the gateway server when the app launches.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
+                  <div className="px-6 py-4 space-y-4">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <Label>Gateway Server</Label>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {window.electronAPI 
-                            ? "Manage the gateway server process from this app."
-                            : "Gateway management requires Electron API."}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {gatewayManager.status && (
+                      <div className="flex items-center gap-3">
+                        {serverStatus && (
                           <div className="flex items-center gap-2 text-sm">
-                            {gatewayManager.status.running ? (
+                            {serverStatus.running ? (
                               <>
-                                <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                <div className="h-2 w-2 rounded-full bg-[#3fb950]"></div>
                                 <span className="text-muted-foreground">Running</span>
                               </>
                             ) : (
                               <>
-                                <div className="h-2 w-2 rounded-full bg-gray-400"></div>
+                                <div className="h-2 w-2 rounded-full bg-muted-foreground"></div>
                                 <span className="text-muted-foreground">Stopped</span>
                               </>
                             )}
                           </div>
                         )}
-                        {window.electronAPI && (
-                          <>
-                            {gatewayManager.status?.running ? (
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={async () => {
-                                  const success = await gatewayManager.stopGateway(
-                                    settings.gateway.host,
-                                    settings.gateway.port
-                                  );
-                                  if (success && gatewayClient) {
-                                    gatewayClient.disconnect();
-                                  }
-                                }}
-                                disabled={gatewayManager.isStopping || gatewayManager.isStarting}
-                              >
-                                {gatewayManager.isStopping ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Stopping...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Power className="h-4 w-4 mr-2" />
-                                    Stop Gateway
-                                  </>
-                                )}
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={async () => {
-                                  const success = await gatewayManager.startGateway(
-                                    settings.gateway.host,
-                                    settings.gateway.port
-                                  );
-                                  if (success && gatewayClient) {
-                                    // Try to connect after starting
-                                    setTimeout(() => {
-                                      gatewayClient.connect().catch(() => {
-                                        // Connection will be handled by App component
-                                      });
-                                    }, 1000);
-                                  }
-                                }}
-                                disabled={gatewayManager.isStarting || gatewayManager.isStopping}
-                              >
-                                {gatewayManager.isStarting ? (
-                                  <>
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                    Starting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Power className="h-4 w-4 mr-2" />
-                                    Start Gateway
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                          </>
-                        )}
                       </div>
+                      {window.electronAPI && (
+                        <Button
+                          variant={serverStatus?.running ? "destructive" : "default"}
+                          size="default"
+                          onClick={async () => {
+                            if (serverStatus?.running) {
+                              const success = await stopServer(
+                                settings.gateway.host,
+                                settings.gateway.port
+                              );
+                              if (success && gatewayClient) {
+                                gatewayClient.disconnect();
+                              }
+                            } else {
+                              const success = await startServer(
+                                settings.gateway.host,
+                                settings.gateway.port
+                              );
+                              if (success && gatewayClient) {
+                                setTimeout(() => {
+                                  gatewayClient.connect().catch(() => {
+                                    // Connection will be handled by App component
+                                  });
+                                }, 1000);
+                              }
+                            }
+                          }}
+                          disabled={isServerStopping || isServerStarting}
+                        >
+                          {isServerStopping ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Turning off...
+                            </>
+                          ) : isServerStarting ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Turning on...
+                            </>
+                          ) : serverStatus?.running ? (
+                            <>
+                              <Power className="h-4 w-4 mr-2" />
+                              Turn Off
+                            </>
+                          ) : (
+                            <>
+                              <Power className="h-4 w-4 mr-2" />
+                              Turn On
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
 
-                    {gatewayManager.status?.error && (
-                      <div className="text-sm text-destructive">
-                        {gatewayManager.status.error}
+                    {serverStatus?.error && (
+                      <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 px-3 py-2 rounded-md">
+                        {serverStatus.error}
                       </div>
                     )}
+                  </div>
+                </div>
 
-                    <Separator />
+                {/* Auto-start option */}
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="gateway-auto-start"
+                        checked={settings.gateway.autoStart}
+                        onCheckedChange={(checked) =>
+                          updateSettings("gateway", {
+                            autoStart: checked === true,
+                          })
+                        }
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <Label htmlFor="gateway-auto-start" className="cursor-pointer text-sm font-medium text-foreground">
+                          Auto-start gateway on app launch
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Automatically start the gateway server when the app launches.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
 
-                    <div className="flex items-start gap-4">
+                {/* Test connection */}
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4">
+                    <div className="flex items-center gap-3">
                       <Button
-                        variant="secondary"
+                        variant="outline"
                         size="sm"
                         onClick={handleTestConnection}
                         disabled={connectionStatus === "testing"}
@@ -408,41 +372,40 @@ export function SettingsView({
                           </>
                         )}
                       </Button>
-                      <p className="text-xs text-muted-foreground pt-2">
-                        Verifies that the gateway is reachable with these settings.
+                      <p className="text-sm text-muted-foreground">
+                        Verify that the gateway is reachable with current settings.
                       </p>
                     </div>
                   </div>
-                </CardContent>
-                </Card>
+                </div>
 
                 {window.electronAPI && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Gateway Logs</CardTitle>
-                      <CardDescription>
+                  <div className="border border-border rounded-md bg-card">
+                    <div className="px-6 py-4 border-b border-border">
+                      <h2 className="text-base font-semibold text-foreground">Gateway Logs</h2>
+                      <p className="text-sm text-muted-foreground mt-1">
                         View real-time logs from the gateway server process.
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
+                      </p>
+                    </div>
+                    <div className="px-6 py-4">
                       <GatewayLogsViewer limit={200} />
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </div>
                 )}
               </React.Fragment>
             )}
 
             {activeTab === "appearance" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Appearance Settings</CardTitle>
-                  <CardDescription>
-                    Customize how the application looks and feels on your device.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
+              <div className="border border-border rounded-md bg-card">
+                <div className="px-6 py-4 border-b border-border">
+                  <h2 className="text-base font-semibold text-foreground">Appearance</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Customize how the application looks and feels.
+                  </p>
+                </div>
+                <div className="px-6 py-4 space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="theme">
+                    <Label htmlFor="theme" className="text-sm font-medium text-foreground">
                       Theme preference
                     </Label>
                     <Select
@@ -460,15 +423,13 @@ export function SettingsView({
                         <SelectItem value="system">Sync with system</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       Choose how Zuckerman looks to you.
                     </p>
                   </div>
 
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="font-size">
+                  <div className="border-t border-border pt-6 space-y-2">
+                    <Label htmlFor="font-size" className="text-sm font-medium text-foreground">
                       Text size
                     </Label>
                     <Select
@@ -487,79 +448,130 @@ export function SettingsView({
                         <SelectItem value="18">18px (Extra Large)</SelectItem>
                       </SelectContent>
                     </Select>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-muted-foreground">
                       Adjust the font size for the chat and interface.
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             )}
 
             {activeTab === "advanced" && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Advanced Settings</CardTitle>
-                  <CardDescription>
-                    Configure technical settings and advanced connection behavior.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="flex items-start gap-6">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Checkbox
-                          id="auto-reconnect"
-                          checked={settings.advanced.autoReconnect}
-                          onCheckedChange={(checked) =>
-                            updateSettings("advanced", {
-                              autoReconnect: checked === true,
-                            })
-                          }
-                        />
-                        <Label htmlFor="auto-reconnect" className="cursor-pointer">
-                          Auto-reconnect
-                        </Label>
-                      </div>
-                      <p className="text-xs text-muted-foreground ml-6">
-                        Automatically attempt to reconnect to the gateway if the connection is lost.
+              <React.Fragment>
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h2 className="text-base font-semibold text-foreground">Gateway Configuration</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Configure gateway connection settings.
+                    </p>
+                  </div>
+                  <div className="px-6 py-4 space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="gateway-host" className="text-sm font-medium text-foreground">
+                        Gateway Host
+                      </Label>
+                      <Input
+                        id="gateway-host"
+                        value={settings.gateway.host}
+                        onChange={(e) =>
+                          updateSettings("gateway", { host: e.target.value })
+                        }
+                        placeholder="127.0.0.1"
+                        className="max-w-md"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        The hostname or IP address of your Zuckerman Gateway. Default is 127.0.0.1.
+                      </p>
+                    </div>
+
+                    <div className="border-t border-border pt-6 space-y-2">
+                      <Label htmlFor="gateway-port" className="text-sm font-medium text-foreground">
+                        Gateway Port
+                      </Label>
+                      <Input
+                        id="gateway-port"
+                        type="number"
+                        value={settings.gateway.port}
+                        onChange={(e) =>
+                          updateSettings("gateway", {
+                            port: parseInt(e.target.value) || 18789,
+                          })
+                        }
+                        placeholder="18789"
+                        min="1"
+                        max="65535"
+                        className="w-32"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        The port number the gateway is listening on. Default is 18789.
                       </p>
                     </div>
                   </div>
+                </div>
 
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="reconnect-attempts">
-                      Maximum reconnection attempts
-                    </Label>
-                    <Input
-                      id="reconnect-attempts"
-                      type="number"
-                      value={settings.advanced.reconnectAttempts}
-                      onChange={(e) =>
-                        updateSettings("advanced", {
-                          reconnectAttempts: parseInt(e.target.value) || 5,
-                        })
-                      }
-                      min="1"
-                      max="20"
-                      className="w-24"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      How many times the application will try to reconnect before showing an error.
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h2 className="text-base font-semibold text-foreground">Connection Settings</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Configure advanced connection behavior.
                     </p>
                   </div>
-                </CardContent>
-              </Card>
+                  <div className="px-6 py-4 space-y-6">
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id="auto-reconnect"
+                        checked={settings.advanced.autoReconnect}
+                        onCheckedChange={(checked) =>
+                          updateSettings("advanced", {
+                            autoReconnect: checked === true,
+                          })
+                        }
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1">
+                        <Label htmlFor="auto-reconnect" className="cursor-pointer text-sm font-medium text-foreground">
+                          Auto-reconnect
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Automatically attempt to reconnect to the gateway if the connection is lost.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="border-t border-border pt-6 space-y-2">
+                      <Label htmlFor="reconnect-attempts" className="text-sm font-medium text-foreground">
+                        Maximum reconnection attempts
+                      </Label>
+                      <Input
+                        id="reconnect-attempts"
+                        type="number"
+                        value={settings.advanced.reconnectAttempts}
+                        onChange={(e) =>
+                          updateSettings("advanced", {
+                            reconnectAttempts: parseInt(e.target.value) || 5,
+                          })
+                        }
+                        min="1"
+                        max="20"
+                        className="w-24"
+                      />
+                      <p className="text-sm text-muted-foreground">
+                        How many times the application will try to reconnect before showing an error.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </React.Fragment>
             )}
           </div>
         </div>
       </div>
       
       {hasChanges && (
-        <div className="border-t px-8 py-4 flex items-center justify-end">
+        <div className="border-t border-border bg-card px-6 py-4 flex items-center justify-end">
           <Button 
             onClick={handleSave}
+            className="bg-[#0969da] hover:bg-[#0860ca] text-white"
           >
             Save changes
           </Button>

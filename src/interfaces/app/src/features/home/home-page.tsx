@@ -1,10 +1,10 @@
 import React from "react";
 import { ChatView } from "./session/chat-view";
 import { StatusBar } from "../../components/layout/status-bar";
-import type { AppState } from "../../types/app-state";
+import type { UseAppReturn } from "../../hooks/use-app";
 
 interface HomePageProps {
-  state: AppState;
+  state: UseAppReturn;
   onMainContentAction: (action: string, data: any) => void;
 }
 

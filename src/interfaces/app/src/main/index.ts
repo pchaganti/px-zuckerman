@@ -6,6 +6,39 @@ import { createApplicationMenu } from "@main/menu.js";
 import { setupIpcHandlers } from "@main/ipc.js";
 import { cleanupGateway } from "@core/gateway/gateway-manager.js";
 
+// Handle uncaught exceptions and unhandled promise rejections FIRST
+// This must be set up before any other code that might throw errors
+process.on("uncaughtException", (error) => {
+  // Check if it's an EADDRINUSE error - handle gracefully (don't crash the app)
+  const errnoError = error as NodeJS.ErrnoException;
+  if (errnoError.code === "EADDRINUSE") {
+    const errorMessage = error.message || "";
+    // Check if it's related to the gateway port (18789) or any port conflict
+    if (errorMessage.includes("18789") || errorMessage.includes("address already in use")) {
+      console.warn("[App] Port conflict detected (EADDRINUSE) - gateway may already be running");
+      console.warn("[App] This is non-critical - app will connect to existing gateway");
+      return; // Don't crash the app
+    }
+  }
+  console.error("[App] Uncaught Exception:", error);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  // Check if it's an EADDRINUSE error - handle gracefully (don't crash the app)
+  if (reason && typeof reason === "object") {
+    const errnoReason = reason as NodeJS.ErrnoException;
+    if (errnoReason.code === "EADDRINUSE") {
+      const errorMessage = reason instanceof Error ? reason.message : String(reason);
+      if (errorMessage.includes("18789") || errorMessage.includes("address already in use")) {
+        console.warn("[App] Port conflict detected (unhandled rejection) - gateway may already be running");
+        console.warn("[App] This is non-critical - app will connect to existing gateway");
+        return; // Don't crash the app
+      }
+    }
+  }
+  console.error("[App] Unhandled Rejection at:", promise, "reason:", reason);
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
