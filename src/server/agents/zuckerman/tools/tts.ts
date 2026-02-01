@@ -29,7 +29,7 @@ export function createTtsTool(): Tool {
         required: ["text"],
       },
     },
-    handler: async (params, securityContext) => {
+    handler: async (params, securityContext, executionContext) => {
       try {
         const { text, provider, channel } = params;
 

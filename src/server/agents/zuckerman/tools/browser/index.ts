@@ -54,7 +54,7 @@ export function createBrowserTool(): Tool {
         required: ["action"],
       },
     },
-    handler: async (params, securityContext) => {
+    handler: async (params, securityContext, executionContext) => {
       try {
         const { action } = params;
 

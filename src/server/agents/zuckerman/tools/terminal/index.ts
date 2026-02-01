@@ -24,11 +24,27 @@ export interface ToolResult {
   error?: string;
 }
 
+/**
+ * Execution context passed to tool handlers
+ */
+export interface ToolExecutionContext {
+  sessionId: string;
+  stream?: (event: {
+    type: "tool.call" | "tool.result";
+    data: {
+      tool: string;
+      toolArgs?: Record<string, unknown>;
+      toolResult?: ToolResult;
+    };
+  }) => void | Promise<void>;
+}
+
 export interface Tool {
   definition: ToolDefinition;
   handler: (
     params: Record<string, unknown>,
     securityContext?: SecurityContext,
+    executionContext?: ToolExecutionContext,
   ) => Promise<ToolResult> | ToolResult;
 }
 
@@ -59,7 +75,7 @@ export function createTerminalTool(): Tool {
         required: ["command"],
       },
     },
-    handler: async (params, securityContext) => {
+    handler: async (params, securityContext, executionContext) => {
       try {
         const { command, args, cwd } = params;
         
