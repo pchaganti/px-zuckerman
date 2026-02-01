@@ -254,15 +254,6 @@ export function createAgentHandlers(
 
         // Get agent metadata for logging
         const metadata = agentDiscovery.getMetadata(agentId);
-        console.log(`[AgentPrompts] Loaded prompts for "${agentId}":`, {
-          agentDir: metadata?.agentDir,
-          hasSystem: !!promptsData.system,
-          systemLength: promptsData.system?.length || 0,
-          hasBehavior: !!promptsData.behavior,
-          hasPersonality: !!promptsData.personality,
-          hasInstructions: !!promptsData.instructions,
-          fileCount: promptsData.files?.size ?? 0,
-        });
 
         // Extract file names from paths (just the filename, not full path)
         const fileNames: string[] = [];

@@ -5,6 +5,7 @@ import { createCronTool } from "./cron/index.js";
 import { createDeviceTool } from "./device/index.js";
 import { createFilesystemTool } from "./filesystem/index.js";
 import { createGrepTool } from "./grep/index.js";
+import { createMultiEditTool } from "./multiedit/index.js";
 import { createBatchTool, type BatchExecutionContext } from "./batch/index.js";
 
 export class ZuckermanToolRegistry {
@@ -21,6 +22,7 @@ export class ZuckermanToolRegistry {
     this.register(createDeviceTool());
     this.register(createFilesystemTool());
     this.register(createGrepTool());
+    this.register(createMultiEditTool());
     
     // Register batch tool with execution context
     this.registerBatchTool();
@@ -69,6 +71,72 @@ export class ZuckermanToolRegistry {
 
   get(name: string): Tool | undefined {
     return this.tools.get(name);
+  }
+
+  /**
+   * Get tool with repair - attempts to fix case mismatches
+   * Returns the tool if found, or attempts lowercase/repair
+   */
+  getWithRepair(name: string): { tool: Tool; repaired: boolean; originalName: string } | null {
+    // Try exact match first
+    const exactTool = this.tools.get(name);
+    if (exactTool) {
+      return { tool: exactTool, repaired: false, originalName: name };
+    }
+
+    // Try lowercase version (common case mismatch)
+    const lowerName = name.toLowerCase();
+    if (lowerName !== name) {
+      const lowerTool = this.tools.get(lowerName);
+      if (lowerTool) {
+        return { tool: lowerTool, repaired: true, originalName: name };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Find similar tool names (for suggestions)
+   */
+  findSimilar(name: string, maxResults: number = 3): string[] {
+    const available = Array.from(this.tools.keys());
+    const lowerName = name.toLowerCase();
+    
+    // Calculate similarity scores
+    const scored = available.map(toolName => {
+      const lowerTool = toolName.toLowerCase();
+      
+      // Exact match (case-insensitive)
+      if (lowerTool === lowerName) return { name: toolName, score: 100 };
+      
+      // Starts with
+      if (lowerTool.startsWith(lowerName) || lowerName.startsWith(lowerTool)) {
+        return { name: toolName, score: 80 };
+      }
+      
+      // Contains
+      if (lowerTool.includes(lowerName) || lowerName.includes(lowerTool)) {
+        return { name: toolName, score: 60 };
+      }
+      
+      // Levenshtein-like: count matching characters
+      let matches = 0;
+      const minLen = Math.min(lowerName.length, lowerTool.length);
+      for (let i = 0; i < minLen; i++) {
+        if (lowerName[i] === lowerTool[i]) matches++;
+      }
+      const score = (matches / Math.max(lowerName.length, lowerTool.length)) * 40;
+      
+      return { name: toolName, score };
+    });
+    
+    // Sort by score and return top matches
+    return scored
+      .filter(item => item.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, maxResults)
+      .map(item => item.name);
   }
 
   list(): Tool[] {

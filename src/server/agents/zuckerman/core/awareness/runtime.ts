@@ -191,23 +191,38 @@ export class ZuckermanAwareness implements AgentRuntime {
     // Execute tools
     const toolCallResults = [];
     for (const toolCall of toolCalls) {
-      const tool = this.toolRegistry.get(toolCall.name);
-      if (!tool) {
+      // Try to get tool with repair (fixes case mismatches)
+      const toolResult = this.toolRegistry.getWithRepair(toolCall.name);
+      
+      if (!toolResult) {
+        // Tool not found - provide helpful error with suggestions
+        const suggestions = this.toolRegistry.findSimilar(toolCall.name, 3);
+        const suggestionText = suggestions.length > 0
+          ? ` Did you mean: ${suggestions.join(", ")}?`
+          : "";
+        
         toolCallResults.push({
           toolCallId: toolCall.id,
           role: "tool" as const,
-          content: `Error: Tool "${toolCall.name}" not found`,
+          content: `Error: Tool "${toolCall.name}" not found.${suggestionText} Available tools: ${this.toolRegistry.list().map(t => t.definition.name).join(", ")}`,
         });
         continue;
       }
 
+      const { tool, repaired, originalName } = toolResult;
+      
+      // Log repair if it happened
+      if (repaired && originalName !== tool.definition.name) {
+        console.log(`[ToolRepair] Fixed tool name: "${originalName}" -> "${tool.definition.name}"`);
+      }
+
       try {
-        // Emit tool start event
+        // Emit tool start event (use repaired name if applicable)
         if (stream) {
           stream({
             type: "tool.call",
             data: {
-              tool: toolCall.name,
+              tool: tool.definition.name, // Use actual tool name, not the call name
               toolArgs: typeof toolCall.arguments === "string" 
                 ? JSON.parse(toolCall.arguments) 
                 : toolCall.arguments,
@@ -268,12 +283,12 @@ export class ZuckermanAwareness implements AgentRuntime {
           }
         }
 
-        // Emit tool end event
+        // Emit tool end event (use repaired name if applicable)
         if (stream) {
           stream({
             type: "tool.result",
             data: {
-              tool: toolCall.name,
+              tool: tool.definition.name, // Use actual tool name
               toolResult: result,
             },
           });
