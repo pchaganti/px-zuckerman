@@ -10,3 +10,8 @@ dist/
 pnpm-lock.yaml
 .zuckerman/
 .research/
+
+# TypeScript compilation artifacts (should only exist in dist/)
+src/**/*.js
+src/**/*.js.map
+!src/**/*.config.js
