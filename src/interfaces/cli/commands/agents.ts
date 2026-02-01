@@ -57,8 +57,12 @@ export function createAgentsCommand(): Command {
           process.exit(1);
         }
 
-        const result = response.result as { agents: Array<{ id: string; name?: string }> };
-        const agents = result.agents || [];
+        const result = response.result as { agents: string[] | Array<{ id: string; name?: string }> };
+        // Handle both formats: array of strings or array of objects
+        const agentsRaw = result.agents || [];
+        const agents = agentsRaw.map((agent) => 
+          typeof agent === "string" ? { id: agent } : agent
+        );
 
         if (shouldOutputJson(options)) {
           outputJson({ agents }, options);

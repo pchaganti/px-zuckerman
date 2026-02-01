@@ -20,24 +20,31 @@ export function useAgents(
 
   const loadAgents = useCallback(async () => {
     if (!gatewayClient?.isConnected()) {
+      console.log("[Agents] Gateway not connected, skipping agent load");
       return;
     }
 
     try {
+      console.log("[Agents] Loading agents...");
       const service = new AgentService(gatewayClient);
       const loadedAgents = await service.listAgents();
+      console.log("[Agents] Loaded agents:", loadedAgents);
       setAgents(loadedAgents);
 
       // Auto-select first agent if none selected or current selection is invalid
-      if (loadedAgents.length > 0) {
-        if (!currentAgentId || !loadedAgents.includes(currentAgentId)) {
-          setCurrentAgentId(loadedAgents[0]);
+      setCurrentAgentId((prevAgentId) => {
+        if (loadedAgents.length > 0) {
+          if (!prevAgentId || !loadedAgents.includes(prevAgentId)) {
+            console.log("[Agents] Auto-selecting first agent:", loadedAgents[0]);
+            return loadedAgents[0];
+          }
         }
-      }
+        return prevAgentId;
+      });
     } catch (error) {
-      console.error("Failed to load agents:", error);
+      console.error("[Agents] Failed to load agents:", error);
     }
-  }, [gatewayClient, currentAgentId]);
+  }, [gatewayClient]);
 
   useEffect(() => {
     if (gatewayClient?.isConnected()) {

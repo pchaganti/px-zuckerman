@@ -58,18 +58,22 @@ export function useGateway(): UseGatewayReturn {
   useEffect(() => {
     const eventHandlers = GatewayEventHandlers.createStateHandlers({
       onConnect: () => {
+        console.log("[Gateway] Connection established");
         setConnectionStatus("connected");
       },
       onDisconnect: () => {
+        console.log("[Gateway] Connection lost");
         setConnectionStatus("disconnected");
       },
       onError: (error) => {
-        console.error("Gateway error:", error);
+        console.error("[Gateway] Error:", error);
       },
     });
 
     const client = GatewayClientFactory.createWithStateHandlers(eventHandlers);
     setGatewayClient(client);
+    // Reset connection status on mount/HMR
+    setConnectionStatus("disconnected");
 
     return () => {
       client.disconnect();
@@ -112,13 +116,36 @@ export function useGateway(): UseGatewayReturn {
     setConnectionStatus("connecting");
     try {
       await gatewayClient.connect();
+      // Connection status will be set to "connected" by the onConnect handler
+      // But ensure it's set here as well for immediate update
+      if (gatewayClient.isConnected()) {
+        setConnectionStatus("connected");
+      }
     } catch (error) {
-      console.error("Failed to connect:", error);
+      console.error("[Gateway] Failed to connect:", error);
       setConnectionStatus("disconnected");
     } finally {
       connectingRef.current = false;
     }
   }, [gatewayClient]);
+
+  // Auto-reconnect on disconnect (handles HMR and connection drops)
+  useEffect(() => {
+    if (!gatewayClient) return;
+
+    // Check connection status periodically and reconnect if needed
+    const checkInterval = setInterval(() => {
+      const isConnected = gatewayClient.isConnected();
+      const shouldReconnect = !isConnected && connectionStatus === "disconnected" && !connectingRef.current;
+
+      if (shouldReconnect) {
+        console.log("[Gateway] Connection lost, attempting to reconnect...");
+        connect();
+      }
+    }, 2000); // Check every 2 seconds
+
+    return () => clearInterval(checkInterval);
+  }, [gatewayClient, connectionStatus, connect]);
 
   const disconnect = useCallback(() => {
     if (gatewayClient) {

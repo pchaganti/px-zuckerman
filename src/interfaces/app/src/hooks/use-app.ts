@@ -80,17 +80,46 @@ export function useApp(): UseAppReturn {
 
   // Auto-connect when gateway client is ready
   useEffect(() => {
-    if (gatewayClient && !gatewayClient.isConnected() && connectionStatus === "disconnected") {
+    if (!gatewayClient) return;
+
+    const isActuallyConnected = gatewayClient.isConnected();
+    const needsReconnect = !isActuallyConnected && connectionStatus === "disconnected";
+
+    if (needsReconnect) {
+      console.log("[App] Gateway client not connected, attempting to connect...");
       connect();
     }
   }, [gatewayClient, connectionStatus, connect]);
 
+  // Reconnect on mount/remount (handles HMR) - separate effect to ensure it runs
+  useEffect(() => {
+    if (!gatewayClient) return;
+
+    // Small delay to ensure gateway server is ready and avoid race conditions
+    const timeoutId = setTimeout(() => {
+      if (gatewayClient && !gatewayClient.isConnected() && connectionStatus === "disconnected") {
+        console.log("[App] Attempting reconnect after mount/HMR...");
+        connect();
+      }
+    }, 1000); // Longer delay to ensure gateway server is ready
+
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gatewayClient]); // Only depend on gatewayClient to trigger on mount/HMR
+
   // Load agents when connected
   useEffect(() => {
-    if (gatewayClient?.isConnected()) {
-      loadAgents();
+    if (connectionStatus === "connected" && gatewayClient?.isConnected()) {
+      console.log("[App] Connection established, loading agents...");
+      // Small delay to ensure connection is fully established
+      const timeoutId = setTimeout(() => {
+        loadAgents().catch((error) => {
+          console.error("[App] Failed to load agents after connection:", error);
+        });
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
-  }, [gatewayClient, connectionStatus, loadAgents]);
+  }, [connectionStatus, gatewayClient, loadAgents]);
 
   // Load sessions when agent is selected
   useEffect(() => {
@@ -135,16 +164,25 @@ export function useApp(): UseAppReturn {
           break;
         case "select-agent":
           setCurrentAgentId(data.agentId);
-          if (location.pathname !== "/") {
-            navigate("/");
-          }
+          navigate(`/agent/${data.agentId}`);
           break;
         case "new-session":
           if (currentAgentId) {
-            createSession("main", currentAgentId).catch(console.error);
-            if (location.pathname !== "/") {
-              navigate("/");
-            }
+            createSession("main", currentAgentId)
+              .then((newSession) => {
+                // Add to active sessions
+                addToActiveSessions(newSession.id);
+                // Navigate to home if needed
+                if (location.pathname !== "/") {
+                  navigate("/");
+                }
+              })
+              .catch((error) => {
+                console.error("Failed to create session:", error);
+                alert(`Failed to create session: ${error instanceof Error ? error.message : "Unknown error"}`);
+              });
+          } else {
+            alert("Please select an agent first");
           }
           break;
         case "restart-onboarding":

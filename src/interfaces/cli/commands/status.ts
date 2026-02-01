@@ -36,9 +36,13 @@ export function createStatusCommand(): Command {
 
         // Get agents
         const agentsResponse = await client.call({ method: "agents.list" });
-        const agents = agentsResponse.ok && agentsResponse.result
-          ? ((agentsResponse.result as { agents: Array<{ id: string }> }).agents || [])
+        const agentsRaw = agentsResponse.ok && agentsResponse.result
+          ? ((agentsResponse.result as { agents: string[] | Array<{ id: string }> }).agents || [])
           : [];
+        // Handle both formats: array of strings or array of objects
+        const agents = agentsRaw.map((agent) => 
+          typeof agent === "string" ? { id: agent } : agent
+        );
 
         // Get sessions
         const sessionsResponse = await client.call({ method: "sessions.list" });

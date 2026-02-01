@@ -8,6 +8,7 @@ import { ConnectionError } from "./features/gateway/connection-error";
 import { HomePage } from "./features/home/home-page";
 import { SettingsPage } from "./features/home/settings/settings-page";
 import { InspectorPage } from "./features/home/inspector-page";
+import { AgentPage } from "./features/home/agent/agent-page";
 
 declare global {
   interface Window {
@@ -58,7 +59,7 @@ function AppContent() {
             activeSessionIds={app.activeSessionIds}
             onAction={app.handleSidebarAction}
           />
-          <div className="flex-1 overflow-hidden" style={{ minWidth: 0 }}>
+          <div className="flex-1 overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
             <Routes>
               <Route
                 path="/"
@@ -78,6 +79,16 @@ function AppContent() {
                 path="/inspector" 
                 element={
                   <InspectorPage
+                    gatewayClient={app.gatewayClient}
+                    onClose={() => app.handleSidebarAction("navigate-home", {})}
+                  />
+                } 
+              />
+              <Route 
+                path="/agent/:agentId" 
+                element={
+                  <AgentPage
+                    state={app}
                     gatewayClient={app.gatewayClient}
                     onClose={() => app.handleSidebarAction("navigate-home", {})}
                   />
