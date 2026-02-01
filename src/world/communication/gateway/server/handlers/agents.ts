@@ -4,6 +4,8 @@ import { AgentRuntimeFactory } from "@world/runtime/agents/index.js";
 import { loadConfig } from "@world/config/index.js";
 import { resolveSecurityContext } from "@world/execution/security/context/index.js";
 import { resolveAgentLand } from "@world/communication/routing/resolver.js";
+import type { StreamEvent } from "@world/runtime/agents/types.js";
+import { sendEvent } from "../connection.js";
 
 export function createAgentHandlers(
   sessionManager: SessionManager,
@@ -22,7 +24,7 @@ export function createAgentHandlers(
       }
     },
 
-    "agent.run": async ({ respond, params }) => {
+    "agent.run": async ({ respond, params, client }) => {
       const sessionId = params?.sessionId as string | undefined;
       const message = params?.message as string | undefined;
       const config = await loadConfig();
@@ -92,6 +94,19 @@ export function createAgentHandlers(
           return;
         }
 
+        // Create streaming callback to emit events
+        const streamCallback = (event: StreamEvent) => {
+          // Emit event to the client
+          sendEvent(client.socket, {
+            type: "event",
+            event: `agent.stream.${event.type}`,
+            payload: {
+              ...event.data,
+              sessionId: actualSessionId,
+            },
+          });
+        };
+
         // Pass security context to runtime (use actualSessionId)
         const result = await runtime.run({
           sessionId: actualSessionId,
@@ -100,6 +115,7 @@ export function createAgentHandlers(
           model,
           temperature,
           securityContext,
+          stream: streamCallback,
         });
 
         // Add assistant response to session (use actualSessionId)

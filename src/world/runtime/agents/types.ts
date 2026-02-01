@@ -3,6 +3,23 @@ import type { SecurityContext } from "@world/execution/security/types.js";
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
+export interface StreamEvent {
+  type: "token" | "tool.call" | "tool.result" | "thinking" | "done";
+  data: {
+    token?: string;
+    tool?: string;
+    toolArgs?: Record<string, unknown>;
+    toolResult?: unknown;
+    thinking?: string;
+    runId?: string;
+    tokensUsed?: number;
+    toolsUsed?: string[];
+    response?: string;
+  };
+}
+
+export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
+
 export interface AgentRunParams {
   sessionId: SessionId;
   message: string;
@@ -10,6 +27,7 @@ export interface AgentRunParams {
   temperature?: number;
   model?: string;
   securityContext?: SecurityContext;
+  stream?: StreamCallback;
 }
 
 export interface AgentRunResult {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import type { AgentRuntime, AgentRunParams, AgentRunResult } from "@world/runtime/agents/types.js";
+import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@world/runtime/agents/types.js";
 import type { LLMMessage } from "@agents/zuckerman/core/awareness/providers/types.js";
 import type { SessionId } from "@agents/zuckerman/sessions/types.js";
 import { loadConfig } from "@world/config/index.js";
@@ -80,7 +80,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         return `- **${tool.definition.name}**: ${tool.definition.description}`;
       }).join("\n");
       
-      const toolSection = `\n\n## Available Tools\n\n${toolDescriptions}\n\n**Tool Execution Guidelines:**\n- Execute tools autonomously to complete tasks\n- Continue iteratively until the task is complete\n- Handle errors gracefully and try alternatives when needed\n- Only narrate tool usage for complex or sensitive operations`;
+      const toolSection = `\n\n## Available Tools\n\n${toolDescriptions}\n\n## Tool Call Style\nDefault: do not narrate routine, low-risk tool calls (just call the tool).\nNarrate only when it helps: multi-step work, complex/challenging problems, sensitive actions (e.g., deletions), or when the user explicitly asks.\nKeep narration brief and value-dense; avoid repeating obvious steps.\nUse plain human language for narration unless in a technical context.\n\n**Important**: Call tools directly - do NOT show code examples or write code blocks. Actually execute the tool.`;
       
       parts.push(toolSection);
     }
@@ -89,7 +89,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   async run(params: AgentRunParams): Promise<AgentRunResult> {
-    const { sessionId, message, thinkingLevel = "off", temperature, model, securityContext } = params;
+    const { sessionId, message, thinkingLevel = "off", temperature, model, securityContext, stream } = params;
     const runId = randomUUID();
 
     // Get LLM provider and config
@@ -189,13 +189,55 @@ export class ZuckermanAwareness implements AgentRuntime {
       const llmProvider = providerOverride
         ? await this.providerService.selectProvider(config, providerOverride)
         : providerToUse;
-      const llmResponse = await llmProvider.call({
-        messages,
-        systemPrompt,
-        temperature: temperatureToUse,
-        model: modelToUse,
-        tools: tools.length > 0 ? tools : undefined,
-      });
+      
+      let llmResponse: Awaited<ReturnType<typeof llmProvider.call>>;
+      let streamedContent = "";
+
+      // If streaming is enabled and provider supports it, use streaming
+      if (stream && llmProvider.stream) {
+        // Stream text tokens
+        for await (const token of llmProvider.stream({
+          messages,
+          systemPrompt,
+          temperature: temperatureToUse,
+          model: modelToUse,
+          tools: tools.length > 0 ? tools : undefined,
+        })) {
+          streamedContent += token;
+          if (stream) {
+            await stream({
+              type: "token",
+              data: { token, runId },
+            });
+          }
+        }
+
+        // After streaming, we need to check for tool calls
+        // Make a lightweight call to get the full response with tool calls if any
+        // Note: This is a limitation - ideally the stream would include tool call info
+        // For now, we'll make a call to check for tool calls
+        llmResponse = await llmProvider.call({
+          messages,
+          systemPrompt,
+          temperature: temperatureToUse,
+          model: modelToUse,
+          tools: tools.length > 0 ? tools : undefined,
+        });
+        
+        // Use the streamed content if available, otherwise use the response content
+        if (streamedContent) {
+          llmResponse.content = streamedContent;
+        }
+      } else {
+        // Non-streaming path
+        llmResponse = await llmProvider.call({
+          messages,
+          systemPrompt,
+          temperature: temperatureToUse,
+          model: modelToUse,
+          tools: tools.length > 0 ? tools : undefined,
+        });
+      }
 
       // Track tokens
       if (llmResponse.tokensUsed?.total) {
@@ -227,6 +269,19 @@ export class ZuckermanAwareness implements AgentRuntime {
 
         // Add assistant response to messages and persist
         await this.sessionManager.addMessage(sessionId, "assistant", llmResponse.content, { runId });
+
+        // Emit done event if streaming
+        if (stream) {
+          await stream({
+            type: "done",
+            data: {
+              runId,
+              response: llmResponse.content,
+              tokensUsed: totalTokensUsed || llmResponse.tokensUsed?.total,
+              toolsUsed,
+            },
+          });
+        }
 
         return {
           response: llmResponse.content,
@@ -262,6 +317,18 @@ export class ZuckermanAwareness implements AgentRuntime {
         } catch {
           // If JSON parsing fails, try to extract basic params
           toolParams = { action: toolCall.arguments };
+        }
+
+        // Emit tool call event if streaming
+        if (stream) {
+          await stream({
+            type: "tool.call",
+            data: {
+              tool: toolCall.name,
+              toolArgs: toolParams,
+              runId,
+            },
+          });
         }
 
         // Check for repetitive tool calls (same tool + same args)
@@ -327,6 +394,18 @@ export class ZuckermanAwareness implements AgentRuntime {
             content: resultContent,
             toolCallId: toolCall.id,
           });
+
+          // Emit tool result event if streaming
+          if (stream) {
+            await stream({
+              type: "tool.result",
+              data: {
+                tool: toolCall.name,
+                toolResult: result.result,
+                runId,
+              },
+            });
+          }
         } catch (error) {
           // Provide detailed error info to help agent retry with different approach
           const errorMessage = error instanceof Error ? error.message : String(error);
@@ -341,6 +420,18 @@ export class ZuckermanAwareness implements AgentRuntime {
             }),
             toolCallId: toolCall.id,
           });
+
+          // Emit tool result event (error) if streaming
+          if (stream) {
+            await stream({
+              type: "tool.result",
+              data: {
+                tool: toolCall.name,
+                toolResult: { success: false, error: errorMessage },
+                runId,
+              },
+            });
+          }
         }
       }
 
@@ -362,6 +453,14 @@ export class ZuckermanAwareness implements AgentRuntime {
 
       // Add tool results (as tool role messages)
       for (const result of toolCallResults) {
+        // Ensure toolCallId is present (required for API)
+        if (!result.toolCallId) {
+          console.error("CRITICAL: Tool result missing toolCallId, skipping:", {
+            content: result.content.substring(0, 100),
+          });
+          continue;
+        }
+        
         const toolMessage = {
           role: "tool" as const,
           content: result.content,
@@ -409,10 +508,35 @@ export class ZuckermanAwareness implements AgentRuntime {
     if (sessionState) {
       const historyMessages = sessionState.messages.slice(-10);
       for (const msg of historyMessages) {
-        messages.push({
+        // Skip tool messages without toolCallId (invalid state - cannot be sent to API)
+        if (msg.role === "tool" && !msg.toolCallId) {
+          console.warn("Skipping invalid tool message from history (missing toolCallId):", {
+            content: msg.content.substring(0, 100),
+            timestamp: msg.timestamp,
+          });
+          continue;
+        }
+        
+        const llmMsg: LLMMessage = {
           role: msg.role,
           content: msg.content,
-        });
+        };
+        
+        // Preserve toolCallId for tool messages (required)
+        if (msg.toolCallId) {
+          llmMsg.toolCallId = msg.toolCallId;
+        }
+        
+        // Preserve toolCalls for assistant messages
+        if (msg.toolCalls && msg.toolCalls.length > 0) {
+          llmMsg.toolCalls = msg.toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.arguments,
+          }));
+        }
+        
+        messages.push(llmMsg);
       }
     }
 

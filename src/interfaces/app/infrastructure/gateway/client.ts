@@ -10,14 +10,22 @@ export class GatewayClient {
   private pendingRequests = new Map<string, {
     resolve: (response: GatewayResponse) => void;
     reject: (error: Error) => void;
-    timeout: NodeJS.Timeout;
+    timeout: NodeJS.Timeout | undefined;
   }>();
   private options: GatewayClientOptions;
+  private eventListeners: Set<(event: GatewayEvent) => void> = new Set();
 
   constructor(options: GatewayClientOptions = {}) {
     this.host = options.host || "127.0.0.1";
     this.port = options.port || 18789;
     this.options = options;
+  }
+
+  addEventListener(listener: (event: GatewayEvent) => void): () => void {
+    this.eventListeners.add(listener);
+    return () => {
+      this.eventListeners.delete(listener);
+    };
   }
 
   connect(): Promise<void> {
@@ -81,6 +89,14 @@ export class GatewayClient {
                 console.debug("Received connect.challenge");
               }
               this.options.onEvent?.(eventData);
+              // Notify all event listeners
+              this.eventListeners.forEach((listener) => {
+                try {
+                  listener(eventData);
+                } catch (err) {
+                  console.error("Error in event listener:", err);
+                }
+              });
             } else if ("type" in data && data.type === "res") {
               const response = data as GatewayResponse;
               const pending = this.pendingRequests.get(response.id);
@@ -162,14 +178,18 @@ export class GatewayClient {
         params,
       };
 
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error("Request timeout"));
-      }, 30000); // 30 second timeout
+      // No timeout - let requests complete naturally
+      const timeout: NodeJS.Timeout | undefined = undefined;
 
       this.pendingRequests.set(id, {
-        resolve: (response) => resolve(response),
-        reject,
+        resolve: (response) => {
+          if (timeout) clearTimeout(timeout);
+          resolve(response);
+        },
+        reject: (error) => {
+          if (timeout) clearTimeout(timeout);
+          reject(error);
+        },
         timeout,
       });
 
@@ -177,7 +197,7 @@ export class GatewayClient {
         this.ws!.send(JSON.stringify(request));
       } catch (err) {
         this.pendingRequests.delete(id);
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         reject(err instanceof Error ? err : new Error("Failed to send request"));
       }
     });
@@ -186,7 +206,7 @@ export class GatewayClient {
   disconnect(): void {
     // Cancel all pending requests
     this.pendingRequests.forEach(({ timeout, reject }) => {
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       reject(new Error("Connection closed"));
     });
     this.pendingRequests.clear();

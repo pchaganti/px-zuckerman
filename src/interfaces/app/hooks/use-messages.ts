@@ -26,6 +26,7 @@ export function useMessages(
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const lastMessageCountRef = useRef<number>(0);
   const currentSessionIdRef = useRef<string | null>(sessionId);
+  const streamingMessageRef = useRef<{ runId: string; content: string } | null>(null);
 
   // Update ref when sessionId changes
   useEffect(() => {
@@ -50,7 +51,8 @@ export function useMessages(
    * Load messages from the session
    */
   const loadMessages = useCallback(async () => {
-    const currentSession = currentSessionIdRef.current;
+    // Use sessionId prop directly, fallback to ref for backwards compatibility
+    const currentSession = sessionId || currentSessionIdRef.current;
     if (!currentSession || !gatewayClient?.isConnected() || !messageService) {
       setMessages([]);
       return;
@@ -71,7 +73,7 @@ export function useMessages(
       }
       // Silently handle other errors - keep existing messages
     }
-  }, [gatewayClient, messageService]);
+  }, [gatewayClient, messageService, sessionId]);
 
   /**
    * Stop polling for message updates
@@ -123,10 +125,144 @@ export function useMessages(
 
   // Load messages when session changes (but not if we're currently sending)
   useEffect(() => {
-    if (!isSending) {
+    if (!isSending && sessionId) {
+      // Clear messages immediately when session changes to avoid showing stale data
+      setMessages([]);
       loadMessages();
+    } else if (!sessionId) {
+      // Clear messages if no session selected
+      setMessages([]);
     }
-  }, [loadMessages, isSending]);
+  }, [sessionId, loadMessages, isSending]);
+
+  // Set up streaming event listener
+  useEffect(() => {
+    if (!gatewayClient) return;
+
+    const handleStreamEvent = (event: { event: string; payload?: unknown }) => {
+      if (!event.event.startsWith("agent.stream.")) return;
+      
+      const eventType = event.event.replace("agent.stream.", "");
+      const payload = event.payload as {
+        sessionId?: string;
+        runId?: string;
+        token?: string;
+        tool?: string;
+        toolArgs?: Record<string, unknown>;
+        toolResult?: unknown;
+        response?: string;
+        tokensUsed?: number;
+        toolsUsed?: string[];
+      };
+
+      // Only handle events for current session
+      if (payload.sessionId !== currentSessionIdRef.current) return;
+
+      if (eventType === "token" && payload.token) {
+        const token = payload.token;
+        // Update streaming message with new token
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          // Find or create the streaming assistant message
+          let streamingIndex = newMessages.findIndex(
+            (msg) => msg.role === "assistant" && (msg as any).streamingRunId === payload.runId
+          );
+          
+          if (streamingIndex === -1) {
+            // Remove thinking indicator and add new assistant message
+            const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
+            if (thinkingIndex !== -1) {
+              newMessages.splice(thinkingIndex, 1);
+            }
+            
+            const runId = payload.runId || `stream-${Date.now()}`;
+            // Initialize ref with first token
+            streamingMessageRef.current = {
+              runId,
+              content: token,
+            };
+            newMessages.push({
+              role: "assistant",
+              content: token,
+              timestamp: Date.now(),
+              streamingRunId: runId,
+            } as Message & { streamingRunId?: string });
+          } else {
+            // Update existing streaming message
+            const existingMessage = newMessages[streamingIndex];
+            const currentContent = existingMessage.content || "";
+            
+            // Ensure ref is initialized and matches current message content
+            if (!streamingMessageRef.current || streamingMessageRef.current.runId !== payload.runId) {
+              streamingMessageRef.current = {
+                runId: payload.runId || `stream-${Date.now()}`,
+                content: currentContent,
+              };
+            }
+            
+            // Append new token to ref
+            streamingMessageRef.current.content += token;
+            
+            // Update message with ref content (single source of truth)
+            newMessages[streamingIndex] = {
+              ...existingMessage,
+              content: streamingMessageRef.current.content,
+            };
+          }
+          return newMessages;
+        });
+      } else if (eventType === "tool.call" && payload.tool) {
+        // Add tool call indicator
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          // Remove thinking indicator if present
+          const thinkingIndex = newMessages.findIndex((msg) => msg.role === "thinking");
+          if (thinkingIndex !== -1) {
+            newMessages.splice(thinkingIndex, 1);
+          }
+          // Add tool call message
+          newMessages.push({
+            role: "assistant",
+            content: `🔧 Calling tool: ${payload.tool}${payload.toolArgs ? ` with args: ${JSON.stringify(payload.toolArgs)}` : ""}`,
+            timestamp: Date.now(),
+          });
+          return newMessages;
+        });
+      } else if (eventType === "tool.result" && payload.tool) {
+        // Update tool result
+        setMessages((prev) => {
+          const newMessages = [...prev];
+          // Find the last tool call message and update it
+          for (let i = newMessages.length - 1; i >= 0; i--) {
+            if (newMessages[i].content.includes(`Calling tool: ${payload.tool}`)) {
+              const resultStr = payload.toolResult 
+                ? JSON.stringify(payload.toolResult).substring(0, 200)
+                : "completed";
+              newMessages[i] = {
+                ...newMessages[i],
+                content: `🔧 Tool ${payload.tool} result: ${resultStr}`,
+              };
+              break;
+            }
+          }
+          return newMessages;
+        });
+      } else if (eventType === "done") {
+        // Finalize the message
+        streamingMessageRef.current = null;
+        setIsSending(false);
+        // Reload messages to get the final state
+        loadMessages();
+      }
+    };
+
+    // Add event listener
+    const removeListener = gatewayClient.addEventListener(handleStreamEvent);
+
+    return () => {
+      removeListener();
+    };
+  }, [gatewayClient, loadMessages]);
 
   // Manage polling based on connection and session
   useEffect(() => {
@@ -196,9 +332,9 @@ export function useMessages(
         // Send message to backend
         await messageService.sendMessage(currentSessionId, currentAgentId, messageText);
 
-        // Poll for response
+        // Poll for response (no timeout - wait indefinitely)
         let attempts = 0;
-        const maxAttempts = 30; // ~9 seconds max
+        const maxAttempts = Infinity; // No timeout limit
         const pollInterval = 300; // 300ms
 
         const checkForResponse = async (): Promise<void> => {
@@ -209,10 +345,7 @@ export function useMessages(
               try {
                 // Check connection
                 if (!gatewayClient?.isConnected()) {
-                  if (attempts >= maxAttempts) {
-                    clearInterval(interval);
-                    resolve();
-                  }
+                  // Don't timeout on connection loss - keep trying
                   return;
                 }
 
@@ -240,23 +373,20 @@ export function useMessages(
                   });
                   
                   resolve();
-                } else if (attempts >= maxAttempts) {
-                  // Timeout - reload messages anyway
-                  await loadMessages();
-                  clearInterval(interval);
-                  setIsSending(false);
-                  resolve();
                 }
+                // No timeout - keep polling until response arrives
               } catch (error) {
                 const errorMessage = error instanceof Error ? error.message : String(error);
                 const isSessionNotFound = errorMessage.includes("not found") || errorMessage.includes("Session");
                 
-                if (isSessionNotFound || attempts >= maxAttempts) {
+                // Only stop on session not found, not on timeout
+                if (isSessionNotFound) {
                   clearInterval(interval);
                   setIsSending(false);
                   setMessages((prev) => prev.filter((msg) => msg.role !== "thinking"));
                   resolve();
                 }
+                // Otherwise keep polling
               }
             }, pollInterval);
           });

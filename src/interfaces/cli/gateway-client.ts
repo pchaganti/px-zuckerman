@@ -94,19 +94,22 @@ export class GatewayClient {
     };
 
     return new Promise((resolve, reject) => {
-      const timeout = options.timeout ?? 30000;
-      const timeoutId = setTimeout(() => {
-        this.pendingRequests.delete(id);
-        reject(new Error(`Request timeout after ${timeout}ms`));
-      }, timeout);
+      // No timeout - let requests complete naturally
+      // Only set timeout if explicitly provided and > 0
+      const timeoutId = options.timeout && options.timeout > 0
+        ? setTimeout(() => {
+            this.pendingRequests.delete(id);
+            reject(new Error(`Request timeout after ${options.timeout}ms`));
+          }, options.timeout)
+        : undefined;
 
       this.pendingRequests.set(id, {
         resolve: (response) => {
-          clearTimeout(timeoutId);
+          if (timeoutId) clearTimeout(timeoutId);
           resolve(response);
         },
         reject: (error) => {
-          clearTimeout(timeoutId);
+          if (timeoutId) clearTimeout(timeoutId);
           reject(error);
         },
         timeout: timeoutId,
@@ -116,7 +119,7 @@ export class GatewayClient {
         this.ws!.send(JSON.stringify(request));
       } catch (err) {
         this.pendingRequests.delete(id);
-        clearTimeout(timeoutId);
+        if (timeoutId) clearTimeout(timeoutId);
         reject(err instanceof Error ? err : new Error("Failed to send request"));
       }
     });

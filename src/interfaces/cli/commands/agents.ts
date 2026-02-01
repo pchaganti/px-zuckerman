@@ -171,7 +171,7 @@ export function createAgentsCommand(): Command {
               agentId,
               message: finalMessage,
             },
-            timeout: 60000,
+            // No timeout - let requests complete naturally
           });
 
           if (!response.ok) {

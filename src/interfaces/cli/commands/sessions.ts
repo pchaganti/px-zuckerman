@@ -331,7 +331,7 @@ export function createSessionsCommand(): Command {
             agentId,
             message,
           },
-          timeout: 60000, // 60 second timeout for LLM calls
+          // No timeout - let requests complete naturally
         });
 
         if (!response.ok) {

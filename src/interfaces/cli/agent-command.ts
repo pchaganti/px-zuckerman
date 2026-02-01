@@ -105,7 +105,7 @@ export async function runAgentInteraction(options: {
           message: options.message,
           agentId,
         },
-        timeout: 60000, // 60 second timeout for LLM calls
+        // No timeout - let requests complete naturally
       });
 
       if (!response.ok) {
@@ -174,6 +174,59 @@ export async function runAgentInteraction(options: {
         // Show thinking indicator
         process.stdout.write("🤔 Thinking...\r");
 
+        // Set up streaming event listeners
+        let streamedContent = "";
+        let isStreaming = false;
+        const streamUnsubscribers: Array<() => void> = [];
+
+        const tokenUnsub = client.on("agent.stream.token", (payload: unknown) => {
+          const data = payload as { token?: string; sessionId?: string };
+          if (data.token && data.sessionId === sessionId) {
+            if (!isStreaming) {
+              // Clear thinking indicator and start streaming
+              process.stdout.write(" ".repeat(20) + "\r");
+              isStreaming = true;
+            }
+            streamedContent += data.token;
+            process.stdout.write(data.token);
+          }
+        });
+
+        const toolCallUnsub = client.on("agent.stream.tool.call", (payload: unknown) => {
+          const data = payload as { tool?: string; toolArgs?: Record<string, unknown>; sessionId?: string };
+          if (data.tool && data.sessionId === sessionId) {
+            if (!isStreaming) {
+              process.stdout.write(" ".repeat(20) + "\r");
+              isStreaming = true;
+            }
+            process.stdout.write(`\n🔧 Calling tool: ${data.tool}\n`);
+          }
+        });
+
+        const toolResultUnsub = client.on("agent.stream.tool.result", (payload: unknown) => {
+          const data = payload as { tool?: string; toolResult?: unknown; sessionId?: string };
+          if (data.tool && data.sessionId === sessionId) {
+            const resultStr = data.toolResult 
+              ? JSON.stringify(data.toolResult).substring(0, 100)
+              : "completed";
+            process.stdout.write(`🔧 Tool ${data.tool} result: ${resultStr}\n`);
+          }
+        });
+
+        const doneUnsub = client.on("agent.stream.done", (payload: unknown) => {
+          const data = payload as { sessionId?: string; tokensUsed?: number; toolsUsed?: string[] };
+          if (data.sessionId === sessionId) {
+            if (data.tokensUsed) {
+              process.stderr.write(`\n[Tokens: ${data.tokensUsed}]\n`);
+            }
+            if (data.toolsUsed && data.toolsUsed.length > 0) {
+              process.stderr.write(`[Tools used: ${data.toolsUsed.join(", ")}]\n`);
+            }
+          }
+        });
+
+        streamUnsubscribers.push(tokenUnsub, toolCallUnsub, toolResultUnsub, doneUnsub);
+
         try {
           const response = await client.call({
             method: "agent.run",
@@ -182,11 +235,19 @@ export async function runAgentInteraction(options: {
               message,
               agentId,
             },
-            timeout: 60000,
+            // No timeout - let requests complete naturally
           });
 
-          // Clear thinking indicator
-          process.stdout.write(" ".repeat(20) + "\r");
+          // Clean up event listeners
+          streamUnsubscribers.forEach((unsub) => unsub());
+
+          // Clear thinking indicator if not streaming
+          if (!isStreaming) {
+            process.stdout.write(" ".repeat(20) + "\r");
+          } else {
+            // Add newline after streaming
+            process.stdout.write("\n");
+          }
 
           if (!response.ok) {
             console.error(`\n❌ Error: ${response.error?.message || "Unknown error"}\n`);
@@ -194,16 +255,21 @@ export async function runAgentInteraction(options: {
             return;
           }
 
-          const result = response.result as {
-            response: string;
-            tokensUsed?: number;
-          };
+          // If we didn't stream, show the response normally
+          if (!isStreaming) {
+            const result = response.result as {
+              response: string;
+              tokensUsed?: number;
+            };
 
-          console.log(`\n${result.response}\n`);
-          if (result.tokensUsed) {
-            process.stderr.write(`[Tokens: ${result.tokensUsed}]\n`);
+            console.log(`\n${result.response}\n`);
+            if (result.tokensUsed) {
+              process.stderr.write(`[Tokens: ${result.tokensUsed}]\n`);
+            }
           }
         } catch (err) {
+          // Clean up event listeners on error
+          streamUnsubscribers.forEach((unsub) => unsub());
           process.stdout.write(" ".repeat(20) + "\r");
           console.error(`\n❌ Error: ${err instanceof Error ? err.message : "Unknown error"}\n`);
         }

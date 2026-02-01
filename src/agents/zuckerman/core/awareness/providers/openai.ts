@@ -22,52 +22,7 @@ export class OpenAIProvider implements LLMProvider {
       tools,
     } = params;
 
-    // Convert messages format (handle tool calls)
-    const openaiMessages: Array<{
-      role: string;
-      content: string | null;
-      tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-      tool_call_id?: string;
-    }> = [];
-
-    if (systemPrompt) {
-      openaiMessages.push({
-        role: "system",
-        content: systemPrompt,
-      });
-    }
-
-    for (const msg of messages) {
-      const openaiMsg: {
-        role: string;
-        content: string | null;
-        tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-        tool_call_id?: string;
-      } = {
-        role: msg.role,
-        content: msg.content || null,
-      };
-
-      // Handle tool calls in assistant messages
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        openaiMsg.tool_calls = msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: {
-            name: tc.name,
-            arguments: tc.arguments,
-          },
-        }));
-      }
-
-      // Handle tool results (role: "tool")
-      if (msg.toolCallId) {
-        openaiMsg.role = "tool";
-        openaiMsg.tool_call_id = msg.toolCallId;
-      }
-
-      openaiMessages.push(openaiMsg);
-    }
+    const openaiMessages = this.formatMessages(messages, systemPrompt);
 
     const body: Record<string, unknown> = {
       model,
@@ -151,21 +106,7 @@ export class OpenAIProvider implements LLMProvider {
       model = "gpt-4o",
     } = params;
 
-    const openaiMessages: Array<{ role: string; content: string }> = [];
-
-    if (systemPrompt) {
-      openaiMessages.push({
-        role: "system",
-        content: systemPrompt,
-      });
-    }
-
-    for (const msg of messages) {
-      openaiMessages.push({
-        role: msg.role,
-        content: msg.content,
-      });
-    }
+    const openaiMessages = this.formatMessages(messages, systemPrompt);
 
     const response = await fetch(this.baseUrl, {
       method: "POST",
@@ -223,5 +164,60 @@ export class OpenAIProvider implements LLMProvider {
         }
       }
     }
+  }
+
+  private formatMessages(messages: LLMMessage[], systemPrompt?: string): any[] {
+    const openaiMessages: any[] = [];
+
+    if (systemPrompt) {
+      openaiMessages.push({
+        role: "system",
+        content: systemPrompt,
+      });
+    }
+
+    for (const msg of messages) {
+      // CRITICAL: Skip tool messages without valid toolCallId (invalid state - these cannot be sent to API)
+      const hasToolCallId = msg.toolCallId && typeof msg.toolCallId === "string" && msg.toolCallId.trim().length > 0;
+      
+      if (msg.role === "tool" && !hasToolCallId) {
+        console.warn("Skipping invalid tool message (missing toolCallId):", {
+          content: msg.content.substring(0, 100),
+        });
+        continue;
+      }
+
+      const openaiMsg: any = {
+        role: msg.role,
+        content: msg.content || null,
+      };
+
+      // Handle tool calls in assistant messages
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        openaiMsg.tool_calls = msg.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: {
+            name: tc.name,
+            arguments: tc.arguments,
+          },
+        }));
+      }
+
+      // Handle tool results - ensure tool_call_id is set for tool role messages
+      if (msg.role === "tool" || hasToolCallId) {
+        openaiMsg.role = "tool";
+        openaiMsg.tool_call_id = msg.toolCallId!;
+      }
+
+      // Final validation
+      if (openaiMsg.role === "tool" && !openaiMsg.tool_call_id) {
+        continue;
+      }
+
+      openaiMessages.push(openaiMsg);
+    }
+
+    return openaiMessages;
   }
 }

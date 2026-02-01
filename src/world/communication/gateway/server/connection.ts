@@ -153,7 +153,7 @@ function sendResponse(socket: WebSocket, response: Omit<GatewayResponse, "type">
   }
 }
 
-function sendEvent(socket: WebSocket, event: GatewayEvent): void {
+export function sendEvent(socket: WebSocket, event: GatewayEvent): void {
   try {
     socket.send(JSON.stringify(event));
   } catch (err) {

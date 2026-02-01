@@ -18,56 +18,11 @@ export class OpenRouterProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "deepseek/deepseek-chat", // Fast, cheap, and smart default
+      model = "google/gemini-3-flash-preview", // Google Gemini Flash - fast and capable
       tools,
     } = params;
 
-    // Convert messages format (OpenRouter uses OpenAI-compatible format)
-    const openrouterMessages: Array<{
-      role: string;
-      content: string | null;
-      tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-      tool_call_id?: string;
-    }> = [];
-
-    if (systemPrompt) {
-      openrouterMessages.push({
-        role: "system",
-        content: systemPrompt,
-      });
-    }
-
-    for (const msg of messages) {
-      const openrouterMsg: {
-        role: string;
-        content: string | null;
-        tool_calls?: Array<{ id: string; type: string; function: { name: string; arguments: string } }>;
-        tool_call_id?: string;
-      } = {
-        role: msg.role,
-        content: msg.content || null,
-      };
-
-      // Handle tool calls
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        openrouterMsg.tool_calls = msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: {
-            name: tc.name,
-            arguments: tc.arguments,
-          },
-        }));
-      }
-
-      // Handle tool results
-      if (msg.toolCallId) {
-        openrouterMsg.role = "tool";
-        openrouterMsg.tool_call_id = msg.toolCallId;
-      }
-
-      openrouterMessages.push(openrouterMsg);
-    }
+    const openrouterMessages = this.formatMessages(messages, systemPrompt);
 
     const body: Record<string, unknown> = {
       model,
@@ -150,24 +105,10 @@ export class OpenRouterProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "deepseek/deepseek-chat", // Fast, cheap, and smart default
+      model = "google/gemini-2.0-flash-exp", // Google Gemini Flash - fast and capable
     } = params;
 
-    const openrouterMessages: Array<{ role: string; content: string }> = [];
-
-    if (systemPrompt) {
-      openrouterMessages.push({
-        role: "system",
-        content: systemPrompt,
-      });
-    }
-
-    for (const msg of messages) {
-      openrouterMessages.push({
-        role: msg.role,
-        content: msg.content,
-      });
-    }
+    const openrouterMessages = this.formatMessages(messages, systemPrompt);
 
     const response = await fetch(this.baseUrl, {
       method: "POST",
@@ -227,5 +168,60 @@ export class OpenRouterProvider implements LLMProvider {
         }
       }
     }
+  }
+
+  private formatMessages(messages: LLMMessage[], systemPrompt?: string): any[] {
+    const openrouterMessages: any[] = [];
+
+    if (systemPrompt) {
+      openrouterMessages.push({
+        role: "system",
+        content: systemPrompt,
+      });
+    }
+
+    for (const msg of messages) {
+      // CRITICAL: Skip tool messages without valid toolCallId (invalid state - these cannot be sent to API)
+      const hasToolCallId = msg.toolCallId && typeof msg.toolCallId === "string" && msg.toolCallId.trim().length > 0;
+      
+      if (msg.role === "tool" && !hasToolCallId) {
+        console.warn("Skipping invalid tool message (missing toolCallId):", {
+          content: msg.content.substring(0, 100),
+        });
+        continue;
+      }
+
+      const openrouterMsg: any = {
+        role: msg.role,
+        content: msg.content || null,
+      };
+
+      // Handle tool calls in assistant messages
+      if (msg.toolCalls && msg.toolCalls.length > 0) {
+        openrouterMsg.tool_calls = msg.toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: {
+            name: tc.name,
+            arguments: tc.arguments,
+          },
+        }));
+      }
+
+      // Handle tool results - ensure tool_call_id is set for tool role messages
+      if (msg.role === "tool" || hasToolCallId) {
+        openrouterMsg.role = "tool";
+        openrouterMsg.tool_call_id = msg.toolCallId!;
+      }
+
+      // Final validation
+      if (openrouterMsg.role === "tool" && !openrouterMsg.tool_call_id) {
+        continue;
+      }
+
+      openrouterMessages.push(openrouterMsg);
+    }
+
+    return openrouterMessages;
   }
 }
