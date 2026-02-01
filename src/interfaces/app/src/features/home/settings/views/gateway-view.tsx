@@ -4,8 +4,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { GatewayClient } from "../../../../core/gateway/client";
 import { CheckCircle2, XCircle, Power, Loader2 } from "lucide-react";
-import { useGateway } from "../../../../hooks/use-gateway";
 import { GatewayLogsViewer } from "../../../../components/gateway-logs-viewer";
+import type { GatewayStatus } from "../../../../hooks/use-gateway";
 
 interface GatewayViewProps {
   gatewayClient: GatewayClient | null;
@@ -17,6 +17,9 @@ interface GatewayViewProps {
     };
   };
   connectionStatus: "idle" | "testing" | "success" | "error";
+  serverStatus: GatewayStatus | null;
+  isServerStarting: boolean;
+  isServerStopping: boolean;
   onTestConnection: () => void;
   onUpdateGateway: (updates: Partial<{ host: string; port: number; autoStart: boolean }>) => void;
   onToggleServer: () => void;
@@ -26,15 +29,13 @@ export function GatewayView({
   gatewayClient,
   settings,
   connectionStatus,
+  serverStatus,
+  isServerStarting,
+  isServerStopping,
   onTestConnection,
   onUpdateGateway,
   onToggleServer,
 }: GatewayViewProps) {
-  const {
-    serverStatus,
-    isServerStarting,
-    isServerStopping,
-  } = useGateway();
 
   return (
     <React.Fragment>

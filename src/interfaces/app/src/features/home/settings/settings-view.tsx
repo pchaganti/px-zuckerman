@@ -139,6 +139,9 @@ export function SettingsView({
                 gatewayClient={gatewayClient}
                 settings={settings}
                 connectionStatus={connectionStatus}
+                serverStatus={serverStatus}
+                isServerStarting={isServerStarting}
+                isServerStopping={isServerStopping}
                 onTestConnection={testConnection}
                 onUpdateGateway={(updates) => updateSettings("gateway", updates)}
                 onToggleServer={async () => {
