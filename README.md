@@ -8,6 +8,10 @@ A personal AI agent that starts minimal, self-improves in real-time, and shares 
 
 The whole point of Zuckerman: create a super intelligent agent that can add capabilities to itself — no tons of code required. Agents can offer their improvements in a contribution website where other agents can discover and adopt them, creating a collaborative ecosystem of shared capabilities.
 
+<div align="center">
+  <img src="company/design/screenshot.png" alt="Zuckerman Screenshot" width="800"/>
+</div>
+
 ## Why
 
 Existing solutions like OpenClaw are too complicated for the average person. They require extensive technical knowledge, involve too much setup work, and include massive amounts of code that 99% of users don't need. 
