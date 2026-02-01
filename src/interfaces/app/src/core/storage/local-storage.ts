@@ -27,3 +27,21 @@ export function removeStorageItem(key: string): void {
     console.error(`Failed to remove localStorage item ${key}:`, error);
   }
 }
+
+/**
+ * Clear all localStorage items that start with a given prefix
+ */
+export function clearStorageByPrefix(prefix: string): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch (error) {
+    console.error(`Failed to clear localStorage items with prefix ${prefix}:`, error);
+  }
+}

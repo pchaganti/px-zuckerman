@@ -66,48 +66,51 @@ export function AgentStep({
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-semibold">Select Your Agent</h2>
-          <p className="text-muted-foreground">Loading available agents...</p>
-        </div>
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </div>
+      <div className="max-w-[800px] mx-auto flex flex-col items-center justify-center py-20 space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin text-[#58a6ff]" />
+        <p className="text-sm text-[#8b949e]">Scanning for available agents...</p>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Select Your Agent</h1>
-        <p className="text-muted-foreground">
+    <div className="max-w-[800px] mx-auto space-y-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-[#c9d1d9] mb-2">
+          Select Your Agent
+        </h1>
+        <p className="text-[#8b949e]">
           Choose which agent configuration to use for your sessions.
         </p>
       </div>
 
-      {state.agent.agents.length === 0 ? (
-        <Card>
-          <CardContent className="pt-6">
-            <div className="text-center py-8 space-y-4">
-              <div className="text-muted-foreground">No agents available</div>
-              <p className="text-sm text-muted-foreground">
-                The default agent "zuckerman" should be available. Make sure the gateway is running
-                and agents are configured.
-              </p>
+      <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+        <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+          <h2 className="text-base font-semibold text-[#c9d1d9]">Available Agents</h2>
+          <p className="text-xs text-[#8b949e] mt-1">
+            Configurations detected on your gateway
+          </p>
+        </div>
+        <div className="p-6 bg-[#0d1117]">
+          {state.agent.agents.length === 0 ? (
+            <div className="text-center py-8 space-y-3">
+              <Terminal className="h-10 w-10 text-[#30363d] mx-auto" />
+              <div className="space-y-1">
+                <div className="font-semibold text-[#c9d1d9]">No agents found</div>
+                <p className="text-xs text-[#8b949e] max-w-[300px] mx-auto">
+                  Make sure your gateway is running and has agent configurations in the `agents/` directory.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={loadAgents}
+                className="mt-4 border-[#30363d] text-[#c9d1d9] hover:bg-[#21262d]"
+              >
+                Refresh List
+              </Button>
             </div>
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>Available Agents</CardTitle>
-            <CardDescription>
-              Select an agent configuration to use
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+          ) : (
             <RadioGroup
               value={state.agent.agentId || ""}
               onValueChange={handleAgentSelect}
@@ -116,23 +119,32 @@ export function AgentStep({
               {state.agent.agents.map((agentId) => (
                 <label
                   key={agentId}
-                  className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors"
+                  className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+                    state.agent.agentId === agentId 
+                      ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                      : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+                  }`}
                 >
                   <RadioGroupItem value={agentId} id={agentId} className="mt-1" />
                   <div className="flex-1">
-                    <div className="font-medium text-sm">{agentId}</div>
-                    {agentId === "zuckerman" && (
-                      <div className="text-sm text-muted-foreground mt-1">
-                        Base agent configuration (recommended)
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {["terminal", "browser", "canvas", "cron", "device"].map((tool) => (
+                    <div className="font-semibold text-sm text-[#c9d1d9] flex items-center gap-2">
+                      {agentId}
+                      {agentId === "zuckerman" && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-[#238636]/10 text-[#3fb950] border border-[#238636]/20">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-[#8b949e] mt-1">
+                      Full-featured agent with multi-tool capabilities.
+                    </div>
+                    <div className="flex flex-wrap gap-3 mt-3">
+                      {["terminal", "browser", "canvas", "cron"].map((tool) => (
                         <div
                           key={tool}
-                          className="flex items-center gap-1 text-xs text-muted-foreground"
+                          className="flex items-center gap-1.5 text-[11px] text-[#8b949e]"
                         >
-                          {TOOL_ICONS[tool]}
+                          <span className="text-[#58a6ff]">{TOOL_ICONS[tool]}</span>
                           <span className="capitalize">{tool}</span>
                         </div>
                       ))}
@@ -141,44 +153,24 @@ export function AgentStep({
                 </label>
               ))}
             </RadioGroup>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </div>
+      </div>
 
-      {state.agent.agentId && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Agent Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div>
-              <span className="text-sm font-medium">Name:</span>
-              <span className="text-sm text-muted-foreground ml-2">{state.agent.agentId}</span>
-            </div>
-            <div>
-              <span className="text-sm font-medium">Tools Available:</span>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {["terminal", "browser", "canvas", "cron", "nodes"].map((tool) => (
-                  <div
-                    key={tool}
-                    className="flex items-center gap-1 px-2 py-1 rounded bg-muted text-xs"
-                  >
-                    {TOOL_ICONS[tool]}
-                    <span className="capitalize">{tool}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onBack}>
+      <div className="flex items-center justify-end gap-3 pt-6 border-t border-[#30363d]">
+        <Button 
+          variant="ghost" 
+          onClick={onBack}
+          className="text-[#8b949e] hover:text-[#c9d1d9]"
+        >
           Back
         </Button>
-        <Button onClick={onNext} disabled={!state.agent.agentId}>
-          Next
+        <Button 
+          onClick={onNext} 
+          disabled={!state.agent.agentId}
+          className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
+        >
+          Continue
         </Button>
       </div>
     </div>

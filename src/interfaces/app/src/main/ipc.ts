@@ -4,7 +4,7 @@ import { getApiKeys, saveApiKeys } from "@main/env-manager.js";
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, rmSync } from "node:fs";
 
 export function setupIpcHandlers(): void {
   // App info handlers
@@ -80,6 +80,25 @@ export function setupIpcHandlers(): void {
       return { events };
     } catch (error) {
       return { events: [], error: error instanceof Error ? error.message : "Failed to load events" };
+    }
+  });
+
+  // Reset data handler
+  ipcMain.handle("reset:all-data", async () => {
+    const zuckermanDir = join(homedir(), ".zuckerman");
+    
+    if (!existsSync(zuckermanDir)) {
+      return { success: true, message: "No data to reset" };
+    }
+
+    try {
+      rmSync(zuckermanDir, { recursive: true, force: true });
+      return { success: true, message: "All data reset successfully" };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to reset data" 
+      };
     }
   });
 

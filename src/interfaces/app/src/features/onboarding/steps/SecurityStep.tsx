@@ -17,9 +17,10 @@ interface SecurityStepProps {
 const AVAILABLE_TOOLS = [
   { id: "terminal", label: "Terminal", description: "Execute shell commands" },
   { id: "browser", label: "Browser", description: "Web browsing and automation" },
-  { id: "canvas", label: "Canvas", description: "UI rendering and interaction" },
+  { id: "filesystem", label: "Filesystem", description: "Read and write files" },
   { id: "cron", label: "Cron", description: "Scheduled tasks" },
   { id: "device", label: "Device", description: "Device access and control" },
+  { id: "canvas", label: "Canvas", description: "UI rendering and interaction" },
 ];
 
 export function SecurityStep({ state, onUpdate, onNext, onBack }: SecurityStepProps) {
@@ -57,131 +58,173 @@ export function SecurityStep({ state, onUpdate, onNext, onBack }: SecurityStepPr
     onUpdate({
       security: {
         sandboxMode: "all",
-        enabledTools: ["terminal", "browser", "canvas"],
+        enabledTools: AVAILABLE_TOOLS.map((tool) => tool.id),
         deniedCommands: "rm,sudo,format",
       },
     });
   };
 
+  const handleEnableAllTools = () => {
+    onUpdate({
+      security: {
+        ...state.security,
+        enabledTools: AVAILABLE_TOOLS.map((tool) => tool.id),
+      },
+    });
+  };
+
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Security Configuration</h1>
-        <p className="text-muted-foreground">
-          Optional: Configure security settings for your agent. You can change these later.
+    <div className="max-w-[800px] mx-auto space-y-8">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-[#c9d1d9] mb-2">
+          Security Configuration
+        </h1>
+        <p className="text-[#8b949e]">
+          Configure how your agent interacts with your system and restrict its capabilities.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sandbox Mode</CardTitle>
-          <CardDescription>
-            Control how commands are executed
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <RadioGroup
-            value={state.security.sandboxMode}
-            onValueChange={handleSandboxChange}
-            className="space-y-3"
-          >
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
-              <RadioGroupItem value="off" id="sandbox-off" className="mt-1" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">Off</div>
-                <div className="text-sm text-muted-foreground">
-                  Run commands directly on host system (less secure)
-                </div>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
-              <RadioGroupItem value="non-main" id="sandbox-non-main" className="mt-1" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">Non-main sessions only</div>
-                <div className="text-sm text-muted-foreground">
-                  Sandbox non-main sessions, run main sessions on host
-                </div>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
-              <RadioGroupItem value="all" id="sandbox-all" className="mt-1" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">All sessions</div>
-                <div className="text-sm text-muted-foreground">
-                  All commands run in Docker sandbox (recommended)
-                </div>
-              </div>
-            </label>
-          </RadioGroup>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Tool Restrictions</CardTitle>
-          <CardDescription>
-            Select which tools your agent can use
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {AVAILABLE_TOOLS.map((tool) => (
-              <label
-                key={tool.id}
-                className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors"
-              >
-                <Checkbox
-                  checked={state.security.enabledTools.includes(tool.id)}
-                  onCheckedChange={() => handleToolToggle(tool.id)}
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <div className="font-medium text-sm">{tool.label}</div>
-                  <div className="text-sm text-muted-foreground">{tool.description}</div>
-                </div>
-              </label>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Command Restrictions</CardTitle>
-          <CardDescription>
-            Commands to deny (comma-separated)
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="denied-commands">Deny List</Label>
-            <Input
-              id="denied-commands"
-              value={state.security.deniedCommands}
-              onChange={(e) => handleDeniedCommandsChange(e.target.value)}
-              placeholder="rm,sudo,format"
-            />
-            <p className="text-xs text-muted-foreground">
-              Commands that will be blocked from execution
+      <div className="space-y-6">
+        {/* Sandbox Mode */}
+        <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+          <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+            <h2 className="text-base font-semibold text-[#c9d1d9]">Sandbox Mode</h2>
+            <p className="text-xs text-[#8b949e] mt-1">
+              Control how commands are executed
             </p>
           </div>
-          <Button variant="outline" onClick={useDefaults} className="w-full">
-            Use recommended defaults
+          <div className="p-6 bg-[#0d1117]">
+            <RadioGroup
+              value={state.security.sandboxMode}
+              onValueChange={handleSandboxChange}
+              className="space-y-3"
+            >
+              <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+                state.security.sandboxMode === "off" 
+                  ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                  : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+              }`}>
+                <RadioGroupItem value="off" id="sandbox-off" className="mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-sm text-[#c9d1d9]">Direct Execution (Off)</div>
+                  <div className="text-xs text-[#8b949e] mt-1">
+                    Run commands directly on your host system. Use only with trusted agents.
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+                state.security.sandboxMode === "all" 
+                  ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                  : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+              }`}>
+                <RadioGroupItem value="all" id="sandbox-all" className="mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-semibold text-sm text-[#c9d1d9]">Docker Sandbox (Recommended)</div>
+                  <div className="text-xs text-[#8b949e] mt-1">
+                    All commands run in an isolated Docker container for maximum security.
+                  </div>
+                </div>
+              </label>
+            </RadioGroup>
+          </div>
+        </div>
+
+        {/* Tool Restrictions */}
+        <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+          <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22] flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-[#c9d1d9]">Tool Restrictions</h2>
+              <p className="text-xs text-[#8b949e] mt-1">
+                Select which tools your agent can use
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleEnableAllTools}
+              className="text-xs bg-[#21262d] border-[#30363d] text-[#c9d1d9]"
+            >
+              Enable All
+            </Button>
+          </div>
+          <div className="p-6 bg-[#0d1117]">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {AVAILABLE_TOOLS.map((tool) => (
+                <label
+                  key={tool.id}
+                  className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-all ${
+                    state.security.enabledTools.includes(tool.id)
+                      ? "border-[#1f6feb]/50 bg-[#1f6feb]/5"
+                      : "border-[#30363d] bg-[#161b22]"
+                  }`}
+                >
+                  <Checkbox
+                    checked={state.security.enabledTools.includes(tool.id)}
+                    onCheckedChange={() => handleToolToggle(tool.id)}
+                    className="mt-0.5"
+                  />
+                  <div className="flex-1">
+                    <div className="font-semibold text-sm text-[#c9d1d9]">{tool.label}</div>
+                    <div className="text-[11px] text-[#8b949e] leading-relaxed">{tool.description}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Command Restrictions */}
+        <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+          <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+            <h2 className="text-base font-semibold text-[#c9d1d9]">Command Restrictions</h2>
+            <p className="text-xs text-[#8b949e] mt-1">
+              Prevent execution of dangerous shell commands
+            </p>
+          </div>
+          <div className="p-6 space-y-6 bg-[#0d1117]">
+            <div className="space-y-2">
+              <Label htmlFor="denied-commands" className="text-sm font-semibold text-[#c9d1d9]">
+                Deny List (Comma separated)
+              </Label>
+              <Input
+                id="denied-commands"
+                value={state.security.deniedCommands}
+                onChange={(e) => handleDeniedCommandsChange(e.target.value)}
+                placeholder="rm,sudo,format"
+                className="bg-[#0d1117] border-[#30363d] focus:border-[#1f6feb] focus:ring-1 focus:ring-[#1f6feb]"
+              />
+              <p className="text-[11px] text-[#8b949e]">
+                Examples: <code className="bg-[#21262d] px-1 rounded">rm</code>, <code className="bg-[#21262d] px-1 rounded">sudo</code>, <code className="bg-[#21262d] px-1 rounded">format</code>, <code className="bg-[#21262d] px-1 rounded">mv</code>
+              </p>
+            </div>
+            <div className="pt-4 border-t border-[#30363d]">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={useDefaults}
+                className="bg-[#21262d] border-[#30363d] text-[#c9d1d9]"
+              >
+                Restore recommended defaults
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 pt-6 border-t border-[#30363d]">
+          <Button 
+            variant="ghost" 
+            onClick={onBack}
+            className="text-[#8b949e] hover:text-[#c9d1d9]"
+          >
+            Back
           </Button>
-        </CardContent>
-      </Card>
-
-      <div className="text-sm text-muted-foreground">
-        You can change these settings later in Settings → Security
-      </div>
-
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onBack}>
-          Back
-        </Button>
-        <Button onClick={onNext}>
-          Next
-        </Button>
+          <Button 
+            onClick={onNext}
+            className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
+          >
+            Continue
+          </Button>
+        </div>
       </div>
     </div>
   );

@@ -178,98 +178,113 @@ export function TestStep({
   const hasErrors = tests.some((test) => test.status === "error");
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Testing Your Setup</h1>
-        <p className="text-muted-foreground">
-          Let's verify everything is working correctly.
+    <div className="max-w-[800px] mx-auto space-y-8">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-[#c9d1d9] mb-2">
+          Finalizing Setup
+        </h1>
+        <p className="text-[#8b949e]">
+          Let's verify everything is working correctly before we finish.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Test Results</CardTitle>
-          <CardDescription>
-            Running checks on your configuration
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
+      <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+        <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+          <h2 className="text-base font-semibold text-[#c9d1d9]">Automated Health Checks</h2>
+          <p className="text-xs text-[#8b949e] mt-1">
+            Running verification suite
+          </p>
+        </div>
+        <div className="p-0 bg-[#0d1117]">
+          <div className="divide-y divide-[#30363d]">
             {tests.map((test) => (
               <div
                 key={test.id}
-                className="flex items-start gap-3 p-3 rounded-md border"
+                className="flex items-center justify-between p-4 px-6 hover:bg-[#161b22]/50 transition-colors"
               >
-                <div className="mt-0.5">
-                  {test.status === "pending" && (
-                    <div className="h-5 w-5 rounded-full border-2 border-muted" />
+                <div className="flex items-center gap-4">
+                  <div className="shrink-0">
+                    {test.status === "pending" && (
+                      <div className="h-4 w-4 rounded-full border border-[#30363d]" />
+                    )}
+                    {test.status === "testing" && (
+                      <Loader2 className="h-4 w-4 animate-spin text-[#58a6ff]" />
+                    )}
+                    {test.status === "success" && (
+                      <CheckCircle2 className="h-4 w-4 text-[#3fb950]" />
+                    )}
+                    {test.status === "error" && (
+                      <XCircle className="h-4 w-4 text-[#f85149]" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[#c9d1d9]">{test.label}</div>
+                    {test.error && (
+                      <div className="text-[11px] text-[#f85149] mt-1">{test.error}</div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  {test.status === "success" && (
+                    <span className="text-[10px] font-medium text-[#3fb950] uppercase tracking-wider">Passed</span>
                   )}
                   {test.status === "testing" && (
-                    <Loader2 className="h-5 w-5 animate-spin text-primary" />
-                  )}
-                  {test.status === "success" && (
-                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                    <span className="text-[10px] font-medium text-[#58a6ff] uppercase tracking-wider">Checking...</span>
                   )}
                   {test.status === "error" && (
-                    <XCircle className="h-5 w-5 text-destructive" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium">{test.label}</div>
-                  {test.error && (
-                    <div className="text-sm text-destructive mt-1">{test.error}</div>
+                    <span className="text-[10px] font-medium text-[#f85149] uppercase tracking-wider">Failed</span>
                   )}
                 </div>
               </div>
             ))}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {allPassed && (
-        <Card className="border-green-500/20 bg-green-500/10">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">All checks passed!</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Your setup is ready to use.
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 rounded-md border border-[#238636]/20 bg-[#238636]/5 flex gap-3">
+          <CheckCircle2 className="h-5 w-5 text-[#3fb950] shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <div className="font-semibold text-[#c9d1d9]">System ready</div>
+            <div className="text-[#8b949e]">All components are configured and responding correctly. You can now proceed to the final step.</div>
+          </div>
+        </div>
       )}
 
       {hasErrors && !running && (
-        <Card className="border-destructive/50 bg-destructive/5">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <div className="font-medium text-sm">Some checks failed</div>
-                <div className="text-sm text-muted-foreground mt-1">
-                  Please fix the issues above before continuing.
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="p-4 rounded-md border border-[#f85149]/20 bg-[#f85149]/5 flex gap-3">
+          <AlertCircle className="h-5 w-5 text-[#f85149] shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <div className="font-semibold text-[#c9d1d9]">Configuration issues</div>
+            <div className="text-[#8b949e]">Some checks failed. Please review the errors above and fix your settings.</div>
+          </div>
+        </div>
       )}
 
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onBack}>
+      <div className="flex items-center justify-end gap-3 pt-6 border-t border-[#30363d]">
+        <Button 
+          variant="ghost" 
+          onClick={onBack}
+          className="text-[#8b949e] hover:text-[#c9d1d9]"
+        >
           Back
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-3">
           {hasErrors && !running && (
-            <Button variant="outline" onClick={runTests}>
-              Retry tests
+            <Button 
+              variant="outline" 
+              onClick={runTests}
+              className="bg-[#21262d] border-[#30363d] text-[#c9d1d9]"
+            >
+              Retry
             </Button>
           )}
-          <Button onClick={onNext} disabled={!allPassed || running}>
-            Next
+          <Button 
+            onClick={onNext} 
+            disabled={!allPassed || running}
+            className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
+          >
+            Finish Setup
           </Button>
         </div>
       </div>

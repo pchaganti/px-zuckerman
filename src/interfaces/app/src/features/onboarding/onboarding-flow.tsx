@@ -7,6 +7,7 @@ import { AgentStep } from "./steps/AgentStep";
 import { SecurityStep } from "./steps/SecurityStep";
 import { TestStep } from "./steps/TestStep";
 import { CompleteStep } from "./steps/CompleteStep";
+import { TitleBar } from "../../components/layout/title-bar";
 import logo from "@/assets/logo.png";
 
 export interface OnboardingState {
@@ -77,7 +78,7 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
     },
     security: {
       sandboxMode: "all",
-      enabledTools: ["terminal", "browser", "canvas"],
+      enabledTools: ["terminal", "browser", "filesystem", "cron", "device", "canvas"],
       deniedCommands: "rm,sudo,format",
     },
     testResults: {
@@ -192,60 +193,103 @@ export function OnboardingFlow({ onComplete, onSkip, gatewayClient }: Onboarding
     }
   };
 
+  const steps = [
+    { id: 1, title: "Welcome" },
+    { id: 2, title: "LLM Provider" },
+    { id: 3, title: "Channel" },
+    { id: 4, title: "Agent" },
+    { id: 5, title: "Security" },
+    { id: 6, title: "Final Test" },
+    { id: 7, title: "Complete" },
+  ];
+
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
-      {/* Header */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shrink-0">
-        <div className="mx-auto max-w-4xl px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img src={logo} alt="Zuckerman" className="h-6 w-6" />
-              <div className="text-xl font-semibold">Zuckerman</div>
-              <div className="h-4 w-px bg-border" />
-              <span className="text-sm text-muted-foreground">
-                Step {state.currentStep} of {TOTAL_STEPS}
-              </span>
+    <div className="h-screen bg-[#0d1117] text-[#c9d1d9] flex flex-col font-sans overflow-hidden">
+      <TitleBar />
+      {/* GitHub Top Nav Style Header */}
+      <header className="bg-[#161b22] border-b border-[#30363d] py-4 px-6 shrink-0">
+        <div className="max-w-[1280px] mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 hover:opacity-80 transition-opacity cursor-pointer">
+              <img src={logo} alt="Zuckerman" className="h-8 w-8" />
+              <span className="font-semibold text-[16px]">Zuckerman</span>
             </div>
-            <button
-              onClick={handleSkip}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Skip setup
-            </button>
+            <div className="h-5 w-[1px] bg-[#30363d] mx-2" />
+            <span className="text-sm font-medium text-[#8b949e]">Onboarding</span>
           </div>
-          {/* Progress Bar */}
-          <div className="mt-4">
-            <div className="flex gap-1.5">
-              {Array.from({ length: TOTAL_STEPS }).map((_, i) => {
-                const stepNum = i + 1;
-                const isActive = stepNum === state.currentStep;
-                const isComplete = stepNum < state.currentStep;
+          <button
+            onClick={handleSkip}
+            className="text-xs font-medium text-[#8b949e] hover:text-[#58a6ff] transition-colors"
+          >
+            Skip setup
+          </button>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-y-auto bg-[#0d1117]">
+        <div className="max-w-[1280px] mx-auto px-6 py-8 flex gap-8 min-h-full">
+          {/* Sidebar Navigation */}
+          <aside className="w-64 shrink-0 hidden md:block">
+            <nav className="space-y-0.5 sticky top-0">
+              <div className="px-3 mb-2">
+                <h3 className="text-xs font-semibold text-[#8b949e] uppercase tracking-wider">
+                  Setup Steps
+                </h3>
+              </div>
+              {steps.map((step) => {
+                const isActive = step.id === state.currentStep;
+                const isCompleted = step.id < state.currentStep;
+                
                 return (
                   <div
-                    key={stepNum}
-                    className={`h-1 flex-1 rounded-full transition-all ${
-                      isActive
-                        ? "bg-primary"
-                        : isComplete
-                        ? "bg-primary/40"
-                        : "bg-border"
+                    key={step.id}
+                    className={`flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors ${
+                      isActive 
+                        ? "bg-[#1f6feb] text-white font-medium" 
+                        : "text-[#8b949e] hover:bg-[#21262d] hover:text-[#c9d1d9] cursor-default"
                     }`}
-                  />
+                  >
+                    <div className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] border ${
+                      isActive 
+                        ? "border-white bg-white/20" 
+                        : isCompleted 
+                        ? "border-[#3fb950] bg-[#3fb950]/10 text-[#3fb950]" 
+                        : "border-[#30363d]"
+                    }`}>
+                      {isCompleted ? "✓" : step.id}
+                    </div>
+                    {step.title}
+                  </div>
                 );
               })}
+            </nav>
+          </aside>
+
+          {/* Step Content */}
+          <div className="flex-1 min-w-0">
+            <div className="bg-[#0d1117] pb-12">
+              {renderStep()}
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Main Content - Scrollable */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-12">
-          <div className="max-w-2xl mx-auto">
-            {renderStep()}
+      <footer className="bg-[#0d1117] border-t border-[#30363d] py-6 px-6 shrink-0">
+        <div className="max-w-[1280px] mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-[12px] text-[#8b949e]">
+          <div className="flex items-center gap-4">
+            <span>© 2026 Zuckerman</span>
+            <a href="#" className="hover:text-[#58a6ff]">Terms</a>
+            <a href="#" className="hover:text-[#58a6ff]">Privacy</a>
+            <a href="#" className="hover:text-[#58a6ff]">Security</a>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-[#3fb950]" />
+              Systems Operational
+            </span>
           </div>
         </div>
-      </div>
+      </footer>
     </div>
   );
 }

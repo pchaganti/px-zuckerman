@@ -11,9 +11,18 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { GatewayClient } from "../../../core/gateway/client";
-import { Server, Palette, Settings as SettingsIcon, CheckCircle2, XCircle, Power, Loader2 } from "lucide-react";
+import { Server, Palette, Settings as SettingsIcon, CheckCircle2, XCircle, Power, Loader2, Trash2, Shield } from "lucide-react";
 import { useGateway } from "../../../hooks/use-gateway";
 import { GatewayLogsViewer } from "../../../components/gateway-logs-viewer";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { clearStorageByPrefix } from "../../../core/storage/local-storage";
 
 interface SettingsProps {
   gatewayClient: GatewayClient | null;
@@ -21,7 +30,7 @@ interface SettingsProps {
   onGatewayConfigChange?: (host: string, port: number) => void;
 }
 
-type SettingsTab = "gateway" | "appearance" | "advanced";
+type SettingsTab = "gateway" | "appearance" | "security" | "advanced";
 
 interface SettingsState {
   gateway: {
@@ -73,6 +82,16 @@ export function SettingsView({
 
   const [connectionStatus, setConnectionStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
   const [hasChanges, setHasChanges] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [toolRestrictions, setToolRestrictions] = useState<{
+    profile: "minimal" | "coding" | "messaging" | "full";
+    enabledTools: Set<string>;
+  }>({
+    profile: "full",
+    enabledTools: new Set(["terminal", "browser", "cron", "device", "filesystem", "canvas"]),
+  });
+  const [isLoadingTools, setIsLoadingTools] = useState(false);
   
   const {
     serverStatus,
@@ -108,6 +127,56 @@ export function SettingsView({
     setConnectionStatus("idle");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Load tool restrictions from config
+  useEffect(() => {
+    const loadToolRestrictions = async () => {
+      if (!gatewayClient?.isConnected()) return;
+      
+      setIsLoadingTools(true);
+      try {
+        const response = await gatewayClient.request("config.get", {});
+        
+        if (response.ok && response.result) {
+          const config = (response.result as { config: any }).config;
+          const securityConfig = config?.security;
+          const toolsConfig = securityConfig?.tools;
+          
+          if (toolsConfig) {
+            const profile = toolsConfig.profile || "full";
+            const enabledTools = new Set<string>();
+            
+            // If profile is "full", all tools are enabled
+            if (profile === "full") {
+              enabledTools.add("terminal");
+              enabledTools.add("browser");
+              enabledTools.add("cron");
+              enabledTools.add("device");
+              enabledTools.add("filesystem");
+              enabledTools.add("canvas");
+            } else if (toolsConfig.allow) {
+              // If there's an allow list, use it
+              toolsConfig.allow.forEach((tool: string) => {
+                if (!tool.startsWith("group:")) {
+                  enabledTools.add(tool);
+                }
+              });
+            }
+            
+            setToolRestrictions({ profile, enabledTools });
+          }
+        }
+      } catch (error) {
+        console.error("Failed to load tool restrictions:", error);
+      } finally {
+        setIsLoadingTools(false);
+      }
+    };
+
+    if (gatewayClient?.isConnected()) {
+      loadToolRestrictions();
+    }
+  }, [gatewayClient]);
 
   // Check gateway status when settings change
   useEffect(() => {
@@ -186,9 +255,107 @@ export function SettingsView({
     setHasChanges(true);
   };
 
+  const handleReset = async () => {
+    if (!window.electronAPI) {
+      console.error("Electron API not available");
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      // Clear all localStorage cache first
+      clearStorageByPrefix("zuckerman:");
+      
+      // Then delete server-side data
+      const result = await window.electronAPI.resetAllData();
+      if (result.success) {
+        setShowResetDialog(false);
+        // Reload the app to clear all state and reload sessions from gateway
+        window.location.reload();
+      } else {
+        alert(`Failed to reset data: ${result.error || "Unknown error"}`);
+        setIsResetting(false);
+      }
+    } catch (error) {
+      alert(`Error resetting data: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setIsResetting(false);
+    }
+  };
+
+  const handleToolToggle = async (toolId: string) => {
+    if (!gatewayClient?.isConnected()) {
+      alert("Gateway not connected");
+      return;
+    }
+
+    const newEnabledTools = new Set(toolRestrictions.enabledTools);
+    if (newEnabledTools.has(toolId)) {
+      newEnabledTools.delete(toolId);
+    } else {
+      newEnabledTools.add(toolId);
+    }
+
+    // If all tools are enabled, set profile to "full", otherwise use allow list
+    const allTools = ["terminal", "browser", "cron", "device", "filesystem", "canvas"];
+    const allEnabled = allTools.every((tool) => newEnabledTools.has(tool));
+    
+    const updates: any = {
+      security: {
+        tools: allEnabled
+          ? { profile: "full" }
+          : { profile: "full", allow: Array.from(newEnabledTools) },
+      },
+    };
+
+    try {
+      const response = await gatewayClient.request("config.update", { updates });
+
+      if (response.ok) {
+        setToolRestrictions({
+          profile: allEnabled ? "full" : toolRestrictions.profile,
+          enabledTools: newEnabledTools,
+        });
+      } else {
+        alert(`Failed to update tool restrictions: ${response.error?.message || "Unknown error"}`);
+      }
+    } catch (error) {
+      alert(`Error updating tool restrictions: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
+  const handleEnableAllTools = async () => {
+    if (!gatewayClient?.isConnected()) {
+      alert("Gateway not connected");
+      return;
+    }
+
+    const allTools = ["terminal", "browser", "cron", "device", "filesystem", "canvas"];
+    const updates: any = {
+      security: {
+        tools: { profile: "full" },
+      },
+    };
+
+    try {
+      const response = await gatewayClient.request("config.update", { updates });
+
+      if (response.ok) {
+        setToolRestrictions({
+          profile: "full",
+          enabledTools: new Set(allTools),
+        });
+      } else {
+        alert(`Failed to enable all tools: ${response.error?.message || "Unknown error"}`);
+      }
+    } catch (error) {
+      alert(`Error enabling all tools: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  };
+
   const tabs: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
     { id: "gateway", label: "Gateway", icon: <Server className="h-4 w-4" /> },
     { id: "appearance", label: "Appearance", icon: <Palette className="h-4 w-4" /> },
+    { id: "security", label: "Security", icon: <Shield className="h-4 w-4" /> },
     { id: "advanced", label: "Advanced", icon: <SettingsIcon className="h-4 w-4" /> },
   ];
 
@@ -223,6 +390,7 @@ export function SettingsView({
             <p className="text-sm text-muted-foreground">
               {activeTab === "gateway" && "Turn the gateway server on or off."}
               {activeTab === "appearance" && "Customize how the application looks and feels."}
+              {activeTab === "security" && "Configure security settings and tool restrictions."}
               {activeTab === "advanced" && "Configure gateway connection settings and advanced options."}
             </p>
           </div>
@@ -456,6 +624,71 @@ export function SettingsView({
               </div>
             )}
 
+            {activeTab === "security" && (
+              <React.Fragment>
+                <div className="border border-border rounded-md bg-card">
+                  <div className="px-6 py-4 border-b border-border">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="text-base font-semibold text-foreground">Tool Restrictions</h2>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Select which tools your agent can use.
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleEnableAllTools}
+                        disabled={!gatewayClient?.isConnected() || isLoadingTools}
+                      >
+                        Enable All
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="px-6 py-4">
+                    {isLoadingTools ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-sm text-muted-foreground">Loading tools...</span>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {[
+                          { id: "terminal", label: "Terminal", description: "Execute shell commands" },
+                          { id: "browser", label: "Browser", description: "Web browsing and automation" },
+                          { id: "filesystem", label: "Filesystem", description: "Read and write files" },
+                          { id: "cron", label: "Cron", description: "Scheduled tasks" },
+                          { id: "device", label: "Device", description: "Device access and control" },
+                          { id: "canvas", label: "Canvas", description: "UI rendering and interaction" },
+                        ].map((tool) => (
+                          <label
+                            key={tool.id}
+                            className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors"
+                          >
+                            <Checkbox
+                              checked={toolRestrictions.enabledTools.has(tool.id)}
+                              onCheckedChange={() => handleToolToggle(tool.id)}
+                              disabled={!gatewayClient?.isConnected()}
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1">
+                              <div className="font-medium text-sm text-foreground">{tool.label}</div>
+                              <div className="text-sm text-muted-foreground">{tool.description}</div>
+                            </div>
+                          </label>
+                        ))}
+                        {!gatewayClient?.isConnected() && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Connect to gateway to manage tool restrictions.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </React.Fragment>
+            )}
+
             {activeTab === "advanced" && (
               <React.Fragment>
                 <div className="border border-border rounded-md bg-card">
@@ -561,11 +794,96 @@ export function SettingsView({
                     </div>
                   </div>
                 </div>
+
+                <div className="border border-destructive/50 rounded-md bg-card">
+                  <div className="px-6 py-4 border-b border-border">
+                    <h2 className="text-base font-semibold text-destructive">Danger Zone</h2>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Irreversible and destructive actions.
+                    </p>
+                  </div>
+                  <div className="px-6 py-4">
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-sm font-medium text-foreground mb-1">Reset All Data</h3>
+                        <p className="text-sm text-muted-foreground mb-4">
+                          This will permanently delete all Zuckerman data including:
+                        </p>
+                        <ul className="text-sm text-muted-foreground list-disc list-inside mb-4 space-y-1">
+                          <li>All chat history and sessions</li>
+                          <li>Agent configurations</li>
+                          <li>Memory and transcripts</li>
+                          <li>All other stored data</li>
+                        </ul>
+                        <Button
+                          variant="destructive"
+                          onClick={() => setShowResetDialog(true)}
+                          disabled={!window.electronAPI}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Reset All Data
+                        </Button>
+                        {!window.electronAPI && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Reset functionality requires Electron API.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </React.Fragment>
             )}
           </div>
         </div>
       </div>
+
+      {/* Reset Confirmation Dialog */}
+      <Dialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset All Data</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete all Zuckerman data? This action cannot be undone.
+              <br />
+              <br />
+              This will permanently delete:
+              <ul className="list-disc list-inside mt-2 space-y-1">
+                <li>All chat history and sessions</li>
+                <li>Agent configurations</li>
+                <li>Memory and transcripts</li>
+                <li>All other stored data</li>
+              </ul>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowResetDialog(false)}
+              disabled={isResetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReset}
+              disabled={isResetting}
+            >
+              {isResetting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Reset All Data
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       
       {hasChanges && (
         <div className="border-t border-border bg-card px-6 py-4 flex items-center justify-end">

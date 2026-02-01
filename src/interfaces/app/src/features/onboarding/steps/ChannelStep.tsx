@@ -169,161 +169,150 @@ export function ChannelStep({
   };
 
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">Choose Your Chat Channel</h1>
-        <p className="text-muted-foreground">
-          Select how you want to chat with your agent. You can add more channels later.
+    <div className="max-w-[800px] mx-auto space-y-6">
+      <div className="mb-8">
+        <h1 className="text-2xl font-semibold text-[#c9d1d9] mb-2">
+          Connect Chat Channel
+        </h1>
+        <p className="text-[#8b949e]">
+          Select how you want to chat with your agent. You can add more channels later in settings.
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Channel Selection</CardTitle>
-          <CardDescription>
+      <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+        <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+          <h2 className="text-base font-semibold text-[#c9d1d9]">Channel Selection</h2>
+          <p className="text-xs text-[#8b949e] mt-1">
             Choose your preferred messaging platform
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+          </p>
+        </div>
+        <div className="p-6 bg-[#0d1117]">
           <RadioGroup
             value={selectedChannel}
             onValueChange={(value) => handleChannelSelect(value as ChannelType)}
-            className="space-y-3"
+            className="grid grid-cols-1 md:grid-cols-2 gap-4"
           >
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              selectedChannel === "whatsapp" 
+                ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+            }`}>
               <RadioGroupItem value="whatsapp" id="whatsapp" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-medium text-sm flex items-center gap-2">
+                <div className="font-semibold text-sm text-[#c9d1d9] flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   WhatsApp
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Most popular globally. Requires QR code pairing.
+                <div className="text-xs text-[#8b949e]">
+                  Standard mobile messaging. Requires QR pairing.
                 </div>
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              selectedChannel === "telegram" 
+                ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+            }`}>
               <RadioGroupItem value="telegram" id="telegram" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-medium text-sm flex items-center gap-2">
+                <div className="font-semibold text-sm text-[#c9d1d9] flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   Telegram
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Popular for bots. Requires bot token from @BotFather.
+                <div className="text-xs text-[#8b949e]">
+                  Fast and bot-friendly. Setup in settings.
                 </div>
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              selectedChannel === "discord" 
+                ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+            }`}>
               <RadioGroupItem value="discord" id="discord" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-medium text-sm flex items-center gap-2">
+                <div className="font-semibold text-sm text-[#c9d1d9] flex items-center gap-2">
                   <MessageSquare className="h-4 w-4" />
                   Discord
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  Great for communities. Requires bot token.
+                <div className="text-xs text-[#8b949e]">
+                  Great for community chats. Setup in settings.
                 </div>
               </div>
             </label>
 
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
-              <RadioGroupItem value="slack" id="slack" className="mt-1" />
-              <div className="flex-1 space-y-1">
-                <div className="font-medium text-sm flex items-center gap-2">
-                  <MessageSquare className="h-4 w-4" />
-                  Slack
-                </div>
-                <div className="text-sm text-muted-foreground">
-                  Perfect for teams. Requires bot and app tokens.
-                </div>
-              </div>
-            </label>
-
-            <label className="flex items-start gap-3 p-3 rounded-md border cursor-pointer hover:bg-accent/50 transition-colors">
+            <label className={`flex items-start gap-3 p-4 rounded-md border cursor-pointer transition-all ${
+              selectedChannel === "none" 
+                ? "border-[#1f6feb] bg-[#1f6feb]/5" 
+                : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
+            }`}>
               <RadioGroupItem value="none" id="none" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-medium text-sm">Skip for now</div>
-                <div className="text-sm text-muted-foreground">
-                  You can add channels later in settings
+                <div className="font-semibold text-sm text-[#c9d1d9]">Skip for now</div>
+                <div className="text-xs text-[#8b949e]">
+                  Don't connect a channel during setup.
                 </div>
               </div>
             </label>
           </RadioGroup>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {selectedChannel !== "none" && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Channel Setup</CardTitle>
-            <CardDescription>
-              {selectedChannel === "whatsapp"
-                ? "Connect your WhatsApp account by scanning the QR code"
-                : `${selectedChannel.charAt(0).toUpperCase() + selectedChannel.slice(1)} setup will be configured in settings`}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
+        <div className="border border-[#30363d] rounded-md overflow-hidden bg-[#161b22]">
+          <div className="px-6 py-4 border-b border-[#30363d] bg-[#161b22]">
+            <h2 className="text-base font-semibold text-[#c9d1d9]">Channel Connection</h2>
+            <p className="text-xs text-[#8b949e] mt-1">
+              {selectedChannel === "whatsapp" 
+                ? "Scan the QR code to link your account" 
+                : `Complete ${selectedChannel} setup in settings after onboarding`}
+            </p>
+          </div>
+          <div className="p-6 space-y-4 bg-[#0d1117]">
             {selectedChannel === "whatsapp" && (
-              <>
+              <div className="space-y-4">
                 {qrCode === "pending" && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-3 p-4 bg-muted rounded-lg border-2 border-dashed border-primary/20">
-                      <Loader2 className="h-6 w-6 text-primary shrink-0 animate-spin" />
-                      <div className="flex-1">
-                        <div className="font-medium text-sm">Generating QR Code...</div>
-                        <div className="text-sm text-muted-foreground mt-1">
-                          Please wait while we generate the QR code for WhatsApp pairing.
-                        </div>
-                      </div>
-                    </div>
+                  <div className="flex items-center gap-3 p-4 bg-[#161b22] rounded-md border border-[#30363d] border-dashed">
+                    <Loader2 className="h-5 w-5 text-[#58a6ff] animate-spin" />
+                    <span className="text-sm text-[#8b949e]">Generating QR Code...</span>
                   </div>
                 )}
 
                 {qrCode && qrCode !== "pending" && (
-                  <div className="space-y-4">
-                    <div className="flex flex-col items-center gap-4 p-6 bg-muted rounded-lg border">
-                      <QrCode className="h-6 w-6 text-primary" />
-                      <div className="text-center">
-                        <div className="font-medium text-sm mb-2">Scan QR Code with WhatsApp</div>
-                        <div className="text-sm text-muted-foreground mb-4">
-                          Open WhatsApp on your phone → Settings → Linked Devices → Link a Device,
-                          then scan this QR code.
-                        </div>
-                        <div className="flex justify-center p-4 bg-background rounded-lg border-2 border-dashed">
-                          <QRCodeSVG value={qrCode} size={256} level="M" />
-                        </div>
+                  <div className="flex flex-col items-center gap-6 p-6 bg-[#161b22] rounded-md border border-[#30363d]">
+                    <div className="text-center space-y-2">
+                      <div className="font-semibold text-sm text-[#c9d1d9]">Pair with WhatsApp</div>
+                      <div className="text-xs text-[#8b949e] max-w-[300px]">
+                        Open WhatsApp → Linked Devices → Link a Device.
                       </div>
                     </div>
+                    <div className="p-4 bg-white rounded-lg">
+                      <QRCodeSVG value={qrCode} size={200} level="M" />
+                    </div>
                     {connecting && (
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Waiting for WhatsApp connection...</span>
-                      </div>
-                    )}
-                    {!connecting && (
-                      <div className="text-xs text-muted-foreground p-3 bg-background rounded border text-center">
-                        💡 Once you scan the QR code, this page will automatically detect the connection.
+                      <div className="flex items-center gap-2 text-xs text-[#8b949e]">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        <span>Detecting scan...</span>
                       </div>
                     )}
                   </div>
                 )}
 
                 {connected && (
-                  <div className="flex items-center gap-2 text-sm text-green-500">
+                  <div className="flex items-center gap-2 text-sm text-[#3fb950] p-4 bg-[#238636]/5 border border-[#238636]/20 rounded-md">
                     <CheckCircle2 className="h-4 w-4" />
-                    <span>WhatsApp connected successfully!</span>
+                    <span>Successfully connected to WhatsApp</span>
                   </div>
                 )}
 
                 {error && (
-                  <div className="flex items-start gap-2 text-sm text-destructive">
+                  <div className="flex items-start gap-2 text-sm text-[#f85149] p-4 bg-[#f85149]/5 border border-[#f85149]/20 rounded-md">
                     <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                     <div className="flex-1">
-                      <div className="font-medium">Connection failed</div>
-                      <div className="text-muted-foreground mt-1">{error}</div>
+                      <div className="font-semibold">Connection failed</div>
+                      <div className="text-xs opacity-80">{error}</div>
                     </div>
                   </div>
                 )}
@@ -332,49 +321,55 @@ export function ChannelStep({
                   <Button
                     onClick={handleConnect}
                     disabled={connecting || !gatewayClient}
-                    className="w-full"
+                    className="w-full bg-[#21262d] hover:bg-[#30363d] text-[#c9d1d9] border-[#30363d]"
                   >
                     {connecting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Connecting...
+                        Initializing...
                       </>
                     ) : (
                       <>
                         <QrCode className="mr-2 h-4 w-4" />
-                        Connect WhatsApp
+                        Generate QR Code
                       </>
                     )}
                   </Button>
                 )}
-              </>
+              </div>
             )}
 
             {selectedChannel !== "whatsapp" && (
-              <div className="p-4 bg-muted rounded-lg">
-                <div className="text-sm text-muted-foreground">
-                  {selectedChannel.charAt(0).toUpperCase() + selectedChannel.slice(1)} setup requires
-                  additional configuration (bot tokens, API keys, etc.) that will be done after onboarding.
-                  You can configure it in the settings later.
-                </div>
+              <div className="p-4 bg-[#161b22] rounded-md border border-[#30363d] text-sm text-[#8b949e]">
+                {selectedChannel.charAt(0).toUpperCase() + selectedChannel.slice(1)} integration will be configured later in the main settings dashboard. You can continue with the onboarding.
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
       )}
 
-      <div className="flex items-center justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onBack}>
+      <div className="flex items-center justify-end gap-3 pt-6 border-t border-[#30363d]">
+        <Button 
+          variant="ghost" 
+          onClick={onBack}
+          className="text-[#8b949e] hover:text-[#c9d1d9]"
+        >
           Back
         </Button>
         {selectedChannel === "none" ? (
-          <Button onClick={handleSkip}>Skip</Button>
+          <Button 
+            onClick={handleSkip}
+            className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
+          >
+            Continue
+          </Button>
         ) : (
           <Button
             onClick={onNext}
             disabled={!connected && selectedChannel === "whatsapp"}
+            className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
           >
-            Next
+            Next Step
           </Button>
         )}
       </div>

@@ -28,6 +28,9 @@ export interface ElectronAPI {
   
   // Calendar events
   getCalendarEvents: () => Promise<{ events: Array<any>; error?: string }>;
+  
+  // Reset data
+  resetAllData: () => Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
 export interface PlatformInfo {

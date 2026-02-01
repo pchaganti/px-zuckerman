@@ -27,6 +27,9 @@ export interface ElectronAPI {
   
   // Calendar events
   getCalendarEvents: () => Promise<{ events: Array<any>; error?: string }>;
+  
+  // Reset data
+  resetAllData: () => Promise<{ success: boolean; message?: string; error?: string }>;
 }
 
 // Expose protected methods that allow the renderer process to use
@@ -62,6 +65,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   
   // Calendar events
   getCalendarEvents: () => ipcRenderer.invoke("calendar:get-events"),
+  
+  // Reset data
+  resetAllData: () => ipcRenderer.invoke("reset:all-data"),
 } as ElectronAPI);
 
 // Expose platform info for safe area detection
