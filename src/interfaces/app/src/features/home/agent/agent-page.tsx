@@ -25,7 +25,7 @@ export function AgentPage({ state, gatewayClient, onClose }: AgentPageProps) {
   }
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+    <div className="flex flex-col flex-1 h-full overflow-hidden" style={{ minHeight: 0 }}>
       <AgentView
         agentId={agentId}
         state={state}

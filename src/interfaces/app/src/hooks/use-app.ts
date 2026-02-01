@@ -141,16 +141,12 @@ export function useApp(): UseAppReturn {
         case "select-session":
           setCurrentSessionId(data.sessionId);
           addToActiveSessions(data.sessionId);
-          if (location.pathname !== "/") {
-            navigate("/");
-          }
+          navigate("/");
           break;
         case "restore-session":
           setCurrentSessionId(data.sessionId);
           addToActiveSessions(data.sessionId);
-          if (location.pathname !== "/") {
-            navigate("/");
-          }
+          navigate("/");
           break;
         case "archive-session":
           removeFromActiveSessions(data.sessionId);

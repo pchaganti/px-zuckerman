@@ -11,6 +11,8 @@ import {
   Play, 
   Edit, 
   ChevronLeft,
+  ChevronDown,
+  ChevronRight,
   Loader2,
   Terminal,
   Globe,
@@ -62,6 +64,7 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
   const [prompts, setPrompts] = useState<AgentPrompts | null>(null);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [promptsError, setPromptsError] = useState<string | null>(null);
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
 
   const tabs = [
     { id: "overview" as AgentTab, label: "Overview", icon: <Info className="h-4 w-4" /> },
@@ -118,9 +121,8 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden bg-background" style={{ minHeight: 0 }}>
-      <div className="flex-1 overflow-y-auto" style={{ minHeight: 0 }}>
-        <div className="max-w-4xl mx-auto w-full px-6 py-8">
+    <div className="flex-1 overflow-y-auto bg-background" style={{ minHeight: 0 }}>
+      <div className="max-w-4xl mx-auto w-full px-6 py-8">
           {/* Header with tabs */}
           <div className="mb-8 pb-6 border-b border-border">
             <div className="flex items-center gap-2 mb-4">
@@ -404,33 +406,45 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
                 {/* Archived Sessions */}
                 {archivedAgentSessions.length > 0 && (
                   <div className="border border-border rounded-md bg-card">
-                    <div className="px-6 py-4 border-b border-border">
-                      <h2 className="text-base font-semibold text-foreground">Archived Sessions</h2>
-                      <Badge variant="secondary" className="ml-2">
-                        {archivedAgentSessions.length}
-                      </Badge>
-                    </div>
-                    <div className="px-6 py-4 space-y-1">
-                      {archivedAgentSessions.map((session) => (
-                        <div key={session.id} className="py-2">
-                          <button
-                            onClick={() => {
-                              state.setCurrentSessionId(session.id);
-                              state.addToActiveSessions(session.id);
-                              onClose();
-                            }}
-                            className="w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors opacity-70"
-                          >
-                            <div className="flex items-center gap-2">
-                              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-sm text-foreground">
-                                {session.label || session.id}
-                              </span>
-                            </div>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+                    <button
+                      onClick={() => setArchivedExpanded(!archivedExpanded)}
+                      className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-accent/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-2">
+                        {archivedExpanded ? (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <h2 className="text-base font-semibold text-foreground">Archived Sessions</h2>
+                        <Badge variant="secondary">
+                          {archivedAgentSessions.length}
+                        </Badge>
+                      </div>
+                    </button>
+                    {archivedExpanded && (
+                      <div className="px-6 py-4 space-y-1">
+                        {archivedAgentSessions.map((session) => (
+                          <div key={session.id} className="py-2">
+                            <button
+                              onClick={() => {
+                                state.setCurrentSessionId(session.id);
+                                state.addToActiveSessions(session.id);
+                                onClose();
+                              }}
+                              className="w-full text-left px-3 py-2 rounded-md hover:bg-accent transition-colors opacity-70"
+                            >
+                              <div className="flex items-center gap-2">
+                                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                <span className="text-sm text-foreground">
+                                  {session.label || session.id}
+                                </span>
+                              </div>
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -444,6 +458,5 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
           </div>
         </div>
       </div>
-    </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -17,23 +18,19 @@ interface CollapsibleSectionProps {
   title: string;
   count?: number;
   defaultExpanded?: boolean;
-  storageKey: string;
   alwaysExpanded?: boolean;
   children: React.ReactNode;
 }
 
-function CollapsibleSection({ title, count, defaultExpanded = true, storageKey, alwaysExpanded = false, children }: CollapsibleSectionProps) {
+function CollapsibleSection({ title, count, defaultExpanded = true, alwaysExpanded = false, children }: CollapsibleSectionProps) {
   const [isExpanded, setIsExpanded] = useState(() => {
     if (alwaysExpanded) return true;
-    const stored = localStorage.getItem(`sidebar:collapsed:${storageKey}`);
-    return stored ? stored === "false" : defaultExpanded;
+    return defaultExpanded;
   });
 
   const toggle = () => {
     if (alwaysExpanded) return;
-    const newState = !isExpanded;
-    setIsExpanded(newState);
-    localStorage.setItem(`sidebar:collapsed:${storageKey}`, String(newState));
+    setIsExpanded(!isExpanded);
   };
 
   // Force expanded state if alwaysExpanded is true
@@ -172,7 +169,17 @@ function SessionItem({
 }
 
 export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
+  const location = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Determine current page type
+  const currentPage = location.pathname.startsWith("/agent/") 
+    ? "agent" 
+    : location.pathname === "/settings"
+    ? "settings"
+    : location.pathname === "/inspector"
+    ? "inspector"
+    : "home";
 
   // Filter sessions based on search
   const filteredSessions = useMemo(() => {
@@ -256,7 +263,6 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
             title="Active Sessions"
             count={activeSessions.length}
             defaultExpanded={true}
-            storageKey="active-sessions"
             alwaysExpanded={activeSessions.length > 0}
           >
             <div className="px-2 space-y-0.5">
@@ -275,7 +281,7 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
                   <SessionItem
                     key={session.id}
                     session={session}
-                    isActive={session.id === state.currentSessionId}
+                    isActive={currentPage === "home" && session.id === state.currentSessionId}
                     onSelect={() => onAction("select-session", { sessionId: session.id })}
                     onArchive={() => onAction("archive-session", { sessionId: session.id })}
                   />
@@ -289,7 +295,6 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
             title="Archived"
             count={archivedSessions.length}
             defaultExpanded={false}
-            storageKey="archived-sessions"
           >
             <div className="px-2 space-y-0.5">
               {archivedSessions.length === 0 ? (
@@ -319,7 +324,6 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
             title="Agents"
             count={filteredAgents.length}
             defaultExpanded={true}
-            storageKey="agents"
           >
             <div className="px-2 space-y-0.5">
               {filteredAgents.length === 0 ? (
@@ -329,7 +333,7 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
               ) : (
                 filteredAgents.map((agentId) => {
                   const sessionCount = agentSessionCounts[agentId] || 0;
-                  const isActive = agentId === state.currentAgentId;
+                  const isActive = currentPage === "agent" && agentId === state.currentAgentId;
                   return (
                     <button
                       key={agentId}
@@ -383,15 +387,30 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
 
           {/* Settings Section - GitHub style */}
           <div className="px-3 space-y-0.5 pt-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="w-full h-8 text-sm font-normal text-foreground/70 hover:text-foreground hover:bg-accent/50 justify-start px-3 transition-colors"
+            <div className="relative">
+              <Button
+                variant="ghost"
+                size="sm"
+              className={`w-full h-8 text-sm font-normal justify-start px-3 transition-colors relative ${
+                currentPage === "settings"
+                  ? "text-foreground font-medium"
+                  : "text-foreground/70 hover:text-foreground hover:bg-accent/50"
+              }`}
+              style={{
+                backgroundColor: currentPage === "settings" ? 'hsl(var(--accent))' : 'transparent',
+              }}
               onClick={() => onAction("show-settings", {})}
             >
-              <Settings className="h-4 w-4 mr-2" />
-              Settings
-            </Button>
+              {currentPage === "settings" && (
+                  <div 
+                    className="absolute left-0 top-0 bottom-0 w-0.5 rounded-r"
+                    style={{ backgroundColor: 'hsl(var(--primary))' }}
+                  />
+                )}
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </Button>
+            </div>
             
             <Button
               variant="ghost"

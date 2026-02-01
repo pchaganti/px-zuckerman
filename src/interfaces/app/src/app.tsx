@@ -1,5 +1,5 @@
-import React from "react";
-import { MemoryRouter, Routes, Route } from "react-router-dom";
+import React, { useEffect } from "react";
+import { MemoryRouter, Routes, Route, useNavigate, useLocation } from "react-router-dom";
 import { useApp } from "./hooks/use-app";
 import { Sidebar } from "./components/layout/sidebar";
 import { TitleBar } from "./components/layout/title-bar";
@@ -23,7 +23,23 @@ declare global {
 
 function AppContent() {
   const app = useApp();
+  const navigate = useNavigate();
+  const location = useLocation();
   const showConnectionError = app.connectionStatus === "disconnected";
+
+  // Redirect to agent page by default when agent is selected and on home page
+  // But only if there's no current session (user hasn't explicitly selected a session)
+  useEffect(() => {
+    if (
+      !showConnectionError &&
+      !app.showOnboarding &&
+      app.currentAgentId &&
+      location.pathname === "/" &&
+      !app.currentSessionId
+    ) {
+      navigate(`/agent/${app.currentAgentId}`);
+    }
+  }, [app.currentAgentId, app.currentSessionId, location.pathname, navigate, showConnectionError, app.showOnboarding]);
 
   if (app.showOnboarding) {
     return (
@@ -59,7 +75,7 @@ function AppContent() {
             activeSessionIds={app.activeSessionIds}
             onAction={app.handleSidebarAction}
           />
-          <div className="flex-1 overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
+          <div className="flex flex-col flex-1 overflow-hidden" style={{ minWidth: 0, minHeight: 0 }}>
             <Routes>
               <Route
                 path="/"
