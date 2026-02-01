@@ -4,6 +4,9 @@ import { killPort } from "src/utils/kill-port.js";
 import { GatewayClient } from "../gateway-client.js";
 import { isGatewayRunning } from "../gateway-utils.js";
 import { outputJson, shouldOutputJson } from "../utils/json-output.js";
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 export function createGatewayCommand(): Command {
   const cmd = new Command("gateway")
@@ -15,37 +18,91 @@ export function createGatewayCommand(): Command {
     .option("-p, --port <port>", "Port number", "18789")
     .option("-h, --host <host>", "Host address", "127.0.0.1")
     .option("-v, --verbose", "Verbose logging")
-    .action(async (options: { port: string; host: string; verbose?: boolean }) => {
+    .option("-f, --foreground", "Run in foreground (block terminal)", false)
+    .action(async (options: { port: string; host: string; verbose?: boolean; foreground?: boolean }) => {
       const port = parseInt(options.port, 10);
       const host = options.host;
 
       // Check if already running
       if (await isGatewayRunning(host, port)) {
-        console.log(`Gateway is already running on ws://${host}:${port}`);
+        console.log("success");
         return;
       }
-
-      console.log(`Starting gateway on ws://${host}:${port}...`);
 
       try {
         // Kill any existing processes on the port
         await killPort(port);
 
+        // Start the server
         const server = await startGatewayServer({ port, host });
-        console.log(`✓ Gateway started on ws://${host}:${port}`);
+        
+        // Wait a moment to ensure it's ready
+        for (let i = 0; i < 10; i++) {
+          if (await isGatewayRunning(host, port)) {
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 200));
+        }
 
-        // Graceful shutdown
-        process.on("SIGINT", async () => {
-          console.log("\nShutting down gateway...");
-          await server.close("SIGINT");
-          process.exit(0);
-        });
+        // Verify it's running
+        if (await isGatewayRunning(host, port)) {
+          console.log("success");
+        } else {
+          console.error("Failed to start gateway");
+          await server.close("Startup failed");
+          process.exit(1);
+          return;
+        }
 
-        process.on("SIGTERM", async () => {
-          console.log("\nShutting down gateway...");
-          await server.close("SIGTERM");
-          process.exit(0);
-        });
+        // If foreground mode, keep running and handle shutdown
+        if (options.foreground) {
+          // Graceful shutdown
+          process.on("SIGINT", async () => {
+            console.log("\nShutting down gateway...");
+            await server.close("SIGINT");
+            process.exit(0);
+          });
+
+          process.on("SIGTERM", async () => {
+            console.log("\nShutting down gateway...");
+            await server.close("SIGTERM");
+            process.exit(0);
+          });
+
+          // Keep process alive - wait forever
+          await new Promise(() => {}); // Never resolves
+        } else {
+          // Background mode - spawn a detached process using tsx
+          const __filename = fileURLToPath(import.meta.url);
+          const __dirname = dirname(__filename);
+          const daemonScript = join(__dirname, "..", "gateway-daemon.ts");
+          
+          // Close current server since we'll spawn a new one
+          await server.close("Spawning background process");
+          
+          // Find tsx executable (could be in node_modules/.bin or globally)
+          const tsxPath = join(process.cwd(), "node_modules", ".bin", "tsx");
+          
+          // Spawn a detached process using tsx to run the TypeScript daemon
+          const child = spawn(tsxPath, [daemonScript, host, options.port], {
+            detached: true,
+            stdio: "ignore",
+            cwd: process.cwd(),
+          });
+          
+          child.unref();
+          
+          // Wait a moment for the new process to start
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          
+          // Verify it's running
+          if (await isGatewayRunning(host, port)) {
+            console.log("success");
+          } else {
+            console.error("Failed to start gateway in background");
+            process.exit(1);
+          }
+        }
       } catch (err) {
         console.error("Failed to start gateway:", err);
         process.exit(1);

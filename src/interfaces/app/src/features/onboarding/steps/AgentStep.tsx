@@ -98,7 +98,7 @@ export function AgentStep({
               <div className="space-y-1">
                 <div className="font-semibold text-[#c9d1d9]">No agents found</div>
                 <p className="text-xs text-[#8b949e] max-w-[300px] mx-auto">
-                  Make sure your gateway is running and has agent configurations in the `agents/` directory.
+                  Make sure your gateway is running and has agent configurations in `config.json` or the `src/agents/` directory.
                 </p>
               </div>
               <Button 

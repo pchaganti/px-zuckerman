@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ZuckermanConfig } from "./types.js";
 
-const CONFIG_PATH = join(process.cwd(), ".zuckerman", "config.json");
+const CONFIG_PATH = join(homedir(), ".zuckerman", "config.json");
 const DEFAULT_LAND = join(homedir(), ".zuckerman", "land");
 
 const defaultConfig: ZuckermanConfig = {

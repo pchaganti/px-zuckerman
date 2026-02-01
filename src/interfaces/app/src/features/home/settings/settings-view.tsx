@@ -284,13 +284,18 @@ export function SettingsView({
         }
       }
 
-      // Clear all localStorage cache (includes active sessions, settings, etc.)
+      // Clear all localStorage cache (includes active sessions, settings, onboarding flag, etc.)
       clearStorageByPrefix("zuckerman:");
       
-      // Delete server-side data directory (.zuckerman folder)
+      // Explicitly clear onboarding completed flag to trigger onboarding after reset
+      localStorage.removeItem("zuckerman:onboarding:completed");
+      localStorage.removeItem("zuckerman:onboarding");
+      
+      // Delete server-side data directory (.zuckerman folder in home directory)
       const result = await window.electronAPI.resetAllData();
       if (result.success) {
         // Restart gateway server to ensure it reloads with clean state
+        // The gateway will recreate the default config.json with default "zuckerman" agent
         const gatewaySettings = settings.gateway;
         try {
           await stopServer(gatewaySettings.host, gatewaySettings.port);
@@ -302,7 +307,7 @@ export function SettingsView({
         }
 
         setShowResetDialog(false);
-        // Reload the app to clear all state
+        // Reload the app to clear all state and show onboarding (since flag is cleared)
         window.location.reload();
       } else {
         alert(`Failed to reset data: ${result.error || "Unknown error"}`);

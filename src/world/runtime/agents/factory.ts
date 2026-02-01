@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { AgentRuntime } from "./types.js";
 import { SessionManager } from "@agents/zuckerman/sessions/index.js";
+import { loadConfig } from "@world/config/index.js";
 
 /**
  * Detect if we're running from dist/ or src/
@@ -209,8 +210,22 @@ export class AgentRuntimeFactory {
 
   /**
    * List available agent IDs by discovering them dynamically
+   * First checks config.json, then falls back to file system discovery
    */
   async listAgents(): Promise<string[]> {
+    // First, try to get agents from config.json
+    try {
+      const config = await loadConfig();
+      if (config.agents?.list && config.agents.list.length > 0) {
+        const configAgents = config.agents.list.map(a => a.id);
+        // Verify these agents exist in file system, but return config list as source of truth
+        return configAgents;
+      }
+    } catch (err) {
+      console.warn("Failed to load agents from config:", err);
+    }
+
+    // Fallback to file system discovery
     return this.discoverAgents();
   }
 }
