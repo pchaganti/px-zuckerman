@@ -14,6 +14,12 @@ export interface EventAction {
   conversationIdSource?: string; // Conversation ID that created this cron event
   contextMessage?: string;
   actionMessage: string;
+  context?: {
+    channel?: string;
+    to?: string;
+    accountId?: string;
+    [key: string]: unknown; // Allow additional context fields
+  };
 }
 
 export interface CalendarEvent {

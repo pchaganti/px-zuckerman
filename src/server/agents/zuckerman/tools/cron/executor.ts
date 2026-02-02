@@ -15,19 +15,18 @@ export async function executeEvent(event: CalendarEvent, eventsMap: Map<string, 
   event.lastTriggeredAt = Date.now();
 
   const agentId = event.action.agentId || "zuckerman";
-  
-  // Record calendar event triggered
-  await activityRecorder.recordCalendarEventTriggered(
-    agentId,
-    event.id,
-    event.title,
-  ).catch((err) => {
-    console.warn("Failed to record calendar event triggered:", err);
-  });
 
   try {
     if (event.action.type === "systemEvent") {
       console.log(`[Calendar] System event: ${event.action.actionMessage || ""}`);
+      // Record calendar event triggered for system events
+      await activityRecorder.recordCalendarEventTriggered(
+        agentId,
+        event.id,
+        event.title,
+      ).catch((err) => {
+        console.warn("Failed to record calendar event triggered:", err);
+      });
     } else if (event.action.type === "agentTurn") {
       await executeAgentTurn(event, eventsMap);
     } else {
@@ -120,6 +119,40 @@ async function executeAgentTurn(event: CalendarEvent, eventsMap: Map<string, Cal
     return;
   }
 
+  // Record calendar event triggered with conversationId for activity tracking
+  await activityRecorder.recordCalendarEventTriggered(
+    agentId,
+    event.id,
+    event.title,
+    conversationId,
+  ).catch((err) => {
+    console.warn("Failed to record calendar event triggered:", err);
+  });
+
+  // Set channel metadata from context if provided
+  if (action.context) {
+    const contextMetadata: {
+      channel?: string;
+      to?: string;
+      accountId?: string;
+    } = {};
+    
+    if (action.context.channel) {
+      contextMetadata.channel = action.context.channel;
+    }
+    if (action.context.to) {
+      contextMetadata.to = action.context.to;
+    }
+    if (action.context.accountId) {
+      contextMetadata.accountId = action.context.accountId;
+    }
+    
+    if (Object.keys(contextMetadata).length > 0) {
+      await conversationManager.updateChannelMetadata(conversationId, contextMetadata);
+      console.log(`[Calendar] Set channel metadata for event ${event.id}:`, contextMetadata);
+    }
+  }
+
   // Load config and resolve security context
   const config = await loadConfig();
   const landDir = resolveAgentLandDir(config, agentId);
@@ -142,10 +175,13 @@ async function executeAgentTurn(event: CalendarEvent, eventsMap: Map<string, Cal
     console.log(`[Calendar] Context message: "${action.contextMessage}"`);
   }
   
-  // Prepend contextMessage to actionMessage if provided
+  // Frame the message as a scheduled task execution instruction
+  // This ensures the agent executes the action rather than asking questions about it
+  const executionInstruction = `This is a scheduled task execution. Please execute the following action immediately without asking for clarification:\n\n${action.actionMessage}`;
+  
   const message = action.contextMessage 
-    ? `${action.contextMessage}\n\n${action.actionMessage}`
-    : action.actionMessage;
+    ? `${action.contextMessage}\n\n${executionInstruction}`
+    : executionInstruction;
   
   const runParams: any = {
     conversationId,
