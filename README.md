@@ -39,6 +39,7 @@ You get an approachable, customizable agent that literally grows by rewriting it
 - **Dual interfaces** — CLI (power users) + Electron app (visual)
 - **Calendar & scheduling** — built-in time management
 - **Activity view** — comprehensive timeline tracking of agent runs, tool calls, conversations, messages, and calendar events with filtering and detailed metadata
+- **Sleep mode** — intelligent memory consolidation that processes, summarizes, and saves memories when context window reaches 80% capacity (inspired by human sleep)
 
 ## Architecture (Three Layers)
 
