@@ -22,12 +22,14 @@ export interface StreamEvent {
 
 export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
+import type { LLMModel } from "@server/agents/zuckerman/core/awareness/providers/types.js";
+
 export interface AgentRunParams {
   sessionId: SessionId;
   message: string;
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
-  model?: string;
+  model?: LLMModel;
   securityContext?: SecurityContext;
   stream?: StreamCallback;
 }

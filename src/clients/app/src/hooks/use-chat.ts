@@ -534,8 +534,11 @@ export function useChat(
               )
           )
         );
-        // Re-throw with more context
+        // Re-throw with more context, but don't double-wrap if already wrapped
         const errorMessage = error instanceof Error ? error.message : String(error);
+        if (errorMessage.startsWith("Failed to send message:")) {
+          throw error; // Already wrapped, don't wrap again
+        }
         throw new Error(`Failed to send message: ${errorMessage}`);
       }
     },

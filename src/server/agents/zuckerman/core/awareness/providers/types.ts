@@ -18,12 +18,17 @@ export interface LLMTool {
   };
 }
 
+export interface LLMModel {
+  id: string;
+  name?: string;
+}
+
 export interface LLMCallParams {
   messages: LLMMessage[];
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
-  model?: string;
+  model?: LLMModel;
   tools?: LLMTool[];
 }
 

@@ -68,7 +68,7 @@ export function createAgentHandlers(
       }
       
       const thinkingLevel = params?.thinkingLevel as string | undefined;
-      const model = params?.model as string | undefined;
+      const model = params?.model as { id: string; name?: string } | undefined;
       const temperature = params?.temperature as number | undefined;
 
       if (!sessionId) {

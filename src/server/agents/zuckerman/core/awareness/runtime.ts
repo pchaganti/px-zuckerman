@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
-import type { LLMMessage, LLMTool } from "@server/agents/zuckerman/core/awareness/providers/types.js";
+import type { LLMMessage, LLMTool, LLMModel } from "@server/agents/zuckerman/core/awareness/providers/types.js";
 import type { SessionId } from "@server/agents/zuckerman/sessions/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { SessionManager } from "@server/agents/zuckerman/sessions/index.js";
@@ -208,7 +208,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   private async callLLMWithStreaming(params: {
     provider: any;
     messages: LLMMessage[];
-    model?: string;
+    model?: LLMModel;
     temperature?: number;
     tools: LLMTool[];
     stream?: StreamCallback;

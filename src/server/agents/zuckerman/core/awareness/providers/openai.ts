@@ -26,7 +26,7 @@ export class OpenAIProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "gpt-4o",
+      model = { id: "gpt-4o" },
       tools,
     } = params;
 
@@ -44,7 +44,7 @@ export class OpenAIProvider implements LLMProvider {
 
     try {
       const result = await generateText({
-        model: this.openai(model),
+        model: this.openai(model.id),
         messages: aiMessages,
         temperature,
         maxTokens: maxTokens,
@@ -60,7 +60,7 @@ export class OpenAIProvider implements LLMProvider {
               total: result.usage.totalTokens ?? 0,
             }
           : undefined,
-        model: result.response?.modelId ?? model,
+        model: result.response?.modelId ?? model.id,
         finishReason: result.finishReason,
         toolCalls: result.toolCalls?.map((tc) => ({
           id: tc.toolCallId,
@@ -81,7 +81,7 @@ export class OpenAIProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "gpt-4o",
+      model = { id: "gpt-4o" },
       tools,
     } = params;
 
@@ -99,7 +99,7 @@ export class OpenAIProvider implements LLMProvider {
 
     try {
       const result = await streamText({
-        model: this.openai(model),
+        model: this.openai(model.id),
         messages: aiMessages,
         temperature,
         maxTokens: maxTokens,

@@ -25,7 +25,7 @@ export class AnthropicProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "claude-3-5-sonnet-20241022",
+      model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;
 
@@ -43,7 +43,7 @@ export class AnthropicProvider implements LLMProvider {
 
     try {
       const result = await generateText({
-        model: this.anthropic(model),
+        model: this.anthropic(model.id),
         messages: aiMessages,
         temperature,
         maxTokens: maxTokens,
@@ -59,7 +59,7 @@ export class AnthropicProvider implements LLMProvider {
               total: result.usage.totalTokens ?? 0,
             }
           : undefined,
-        model: result.response?.modelId ?? model,
+        model: result.response?.modelId ?? model.id,
         finishReason: result.finishReason,
         toolCalls: result.toolCalls?.map((tc) => ({
           id: tc.toolCallId,
@@ -80,7 +80,7 @@ export class AnthropicProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens = 4096,
-      model = "claude-3-5-sonnet-20241022",
+      model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;
 
@@ -98,7 +98,7 @@ export class AnthropicProvider implements LLMProvider {
 
     try {
       const result = await streamText({
-        model: this.anthropic(model),
+        model: this.anthropic(model.id),
         messages: aiMessages,
         temperature,
         maxTokens: maxTokens,

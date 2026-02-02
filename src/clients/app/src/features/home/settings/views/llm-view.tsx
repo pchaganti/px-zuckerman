@@ -23,14 +23,14 @@ interface LLMViewProps {
     apiKey: string;
     validated: boolean;
     error?: string;
-    model?: string;
+    model?: LLMModel;
   };
   testingApiKey: boolean;
   availableModels: LLMModel[];
   isLoadingModels: boolean;
   onProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
   onApiKeyChange: (apiKey: string) => void;
-  onModelChange: (model: string) => void;
+  onModelChange: (model: LLMModel) => void;
   onTestApiKey: () => void;
 }
 
@@ -199,8 +199,13 @@ export function LLMView({
                   Model
                 </Label>
                 <Select
-                  value={llmProvider.model || ""}
-                  onValueChange={onModelChange}
+                  value={llmProvider.model?.id || ""}
+                  onValueChange={(modelId) => {
+                    const model = availableModels.find(m => m.id === modelId);
+                    if (model) {
+                      onModelChange(model);
+                    }
+                  }}
                   disabled={isLoadingModels}
                 >
                   <SelectTrigger id="model-select" className="w-full">

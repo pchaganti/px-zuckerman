@@ -1,227 +1,250 @@
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { generateText, streamText, jsonSchema, type Tool, type ModelMessage } from "ai";
 import type { LLMProvider, LLMCallParams, LLMResponse, LLMMessage } from "./types.js";
 
+/**
+ * OpenRouter provider using Vercel AI SDK
+ * Provides access to 300+ models through OpenRouter with unified error handling
+ */
 export class OpenRouterProvider implements LLMProvider {
   name = "openrouter";
-  private apiKey: string;
-  private baseUrl = "https://openrouter.ai/api/v1/chat/completions";
+  private openrouter: ReturnType<typeof createOpenRouter>;
 
   constructor(apiKey: string) {
     if (!apiKey) {
       throw new Error("OpenRouter API key is required");
     }
-    this.apiKey = apiKey;
+
+    this.openrouter = createOpenRouter({
+      apiKey,
+      fetch: this.createCustomFetch(),
+    });
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
-    const {
-      messages,
-      systemPrompt,
-      temperature = 1.0,
-      maxTokens = 4096,
-      model = "google/gemini-3-flash-preview", // Google Gemini Flash - fast and capable
-      tools,
-    } = params;
-
-    const openrouterMessages = this.formatMessages(messages, systemPrompt);
-
-    const body: Record<string, unknown> = {
-      model,
-      messages: openrouterMessages,
-      temperature,
-      max_tokens: maxTokens,
-    };
-
-    // Add tools if provided
-    if (tools && tools.length > 0) {
-      body.tools = tools.map((tool) => ({
-        type: "function",
-        function: tool.function,
-      }));
+    if (!params.model?.id) {
+      throw new Error("Model is required for OpenRouter provider");
     }
+    const modelId = params.model.id.trim();
+    const { aiMessages, toolSet } = this.prepareRequest(params);
 
-    const response = await fetch(this.baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-        "HTTP-Referer": process.env.OPENROUTER_HTTP_REFERER || "https://github.com/zuckerman",
-        "X-Title": process.env.OPENROUTER_X_TITLE || "Zuckerman",
-      },
-      body: JSON.stringify(body),
-    });
+    try {
+      const result = await generateText({
+        model: this.openrouter(modelId),
+        messages: aiMessages,
+        temperature: params.temperature ?? 1.0,
+        maxTokens: params.maxTokens ?? 4096,
+        tools: toolSet,
+      } as Parameters<typeof generateText>[0]);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
-    }
-
-    const data = (await response.json()) as {
-      choices: Array<{
-        message?: {
-          content: string | null;
-          tool_calls?: Array<{
-            id: string;
-            type: string;
-            function: { name: string; arguments: string };
-          }>;
-        };
-        delta?: { content: string };
-        finish_reason?: string;
-      }>;
-      usage?: {
-        prompt_tokens: number;
-        completion_tokens: number;
-        total_tokens: number;
+      return {
+        content: result.text,
+        tokensUsed: result.usage
+          ? {
+              input: result.usage.inputTokens ?? 0,
+              output: result.usage.outputTokens ?? 0,
+              total: result.usage.totalTokens ?? 0,
+            }
+          : undefined,
+        model: result.response?.modelId ?? modelId,
+        finishReason: result.finishReason,
+        toolCalls: result.toolCalls?.map((tc) => ({
+          id: tc.toolCallId,
+          name: tc.toolName,
+          arguments: JSON.stringify("input" in tc ? tc.input : {}),
+        })),
       };
-      model?: string;
-    };
-
-    const message = data.choices[0]?.message;
-    const content = message?.content || "";
-    const toolCalls = message?.tool_calls?.map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      arguments: tc.function.arguments,
-    }));
-
-    return {
-      content,
-      tokensUsed: data.usage
-        ? {
-            input: data.usage.prompt_tokens,
-            output: data.usage.completion_tokens,
-            total: data.usage.total_tokens,
-          }
-        : undefined,
-      model: data.model,
-      finishReason: data.choices[0]?.finish_reason,
-      toolCalls,
-    };
+    } catch (error) {
+      throw this.handleError(error, modelId);
+    }
   }
 
   async *stream(params: LLMCallParams): AsyncIterable<string> {
-    const {
-      messages,
-      systemPrompt,
-      temperature = 1.0,
-      maxTokens = 4096,
-      model = "google/gemini-2.0-flash-exp", // Google Gemini Flash - fast and capable
-    } = params;
-
-    const openrouterMessages = this.formatMessages(messages, systemPrompt);
-
-    const response = await fetch(this.baseUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-        "HTTP-Referer": process.env.OPENROUTER_HTTP_REFERER || "https://github.com/zuckerman",
-        "X-Title": process.env.OPENROUTER_X_TITLE || "Zuckerman",
-      },
-      body: JSON.stringify({
-        model,
-        messages: openrouterMessages,
-        temperature,
-        max_tokens: maxTokens,
-        stream: true,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenRouter API error: ${response.status} ${errorText}`);
+    if (!params.model?.id) {
+      throw new Error("Model is required for OpenRouter provider");
     }
+    const modelId = params.model.id.trim();
+    const { aiMessages, toolSet } = this.prepareRequest(params);
 
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error("No response body");
-    }
+    try {
+      const result = await streamText({
+        model: this.openrouter(modelId),
+        messages: aiMessages,
+        temperature: params.temperature ?? 1.0,
+        maxTokens: params.maxTokens ?? 4096,
+        tools: toolSet,
+      } as Parameters<typeof streamText>[0]);
 
-    const decoder = new TextDecoder();
-    let buffer = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6);
-          if (data === "[DONE]") continue;
-
-          try {
-            const parsed = JSON.parse(data) as {
-              choices?: Array<{ delta?: { content?: string } }>;
-            };
-
-            const content = parsed.choices?.[0]?.delta?.content;
-            if (content) {
-              yield content;
-            }
-          } catch {
-            // Skip invalid JSON
-          }
-        }
+      for await (const chunk of result.textStream) {
+        yield chunk;
       }
+    } catch (error) {
+      throw this.handleError(error, modelId);
     }
   }
 
-  private formatMessages(messages: LLMMessage[], systemPrompt?: string): any[] {
-    const openrouterMessages: any[] = [];
+  private createCustomFetch(): typeof fetch {
+    return async (input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      headers.set("HTTP-Referer", process.env.OPENROUTER_HTTP_REFERER || "https://github.com/zuckerman");
+      headers.set("X-Title", process.env.OPENROUTER_X_TITLE || "Zuckerman");
+      return fetch(input, { ...init, headers });
+    };
+  }
+
+  private prepareRequest(params: LLMCallParams) {
+    const aiMessages = this.convertMessages(params.messages, params.systemPrompt);
+    const toolSet = params.tools?.reduce((acc, tool) => {
+      acc[tool.function.name] = {
+        description: tool.function.description,
+        inputSchema: jsonSchema(tool.function.parameters as Record<string, unknown>),
+      };
+      return acc;
+    }, {} as Record<string, Tool>);
+
+    return { aiMessages, toolSet };
+  }
+
+  private handleError(error: unknown, modelId: string): Error {
+    const errorMessage = this.extractErrorMessage(error);
+    const enhancedMessage = this.enhanceErrorMessage(errorMessage, modelId);
+    return new Error(`OpenRouter API error: ${enhancedMessage}`);
+  }
+
+  private extractErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+      let message = error.message;
+
+      // Extract nested error from AI SDK error structure
+      if (error.cause instanceof Error) {
+        message = error.cause.message;
+      } else if (typeof error.cause === "string") {
+        message = error.cause;
+      }
+
+      // Check for response data in error
+      const response = (error as any).response;
+      if (response?.data?.error?.message) {
+        message = response.data.error.message;
+      }
+
+      // Recursively check nested errors
+      let currentError: any = error;
+      while (currentError) {
+        if (currentError.message && typeof currentError.message === "string") {
+          const nestedMessage = currentError.message;
+          if (nestedMessage.includes("OpenAI API error") || nestedMessage.includes("does not exist")) {
+            message = nestedMessage;
+            break;
+          }
+        }
+        currentError = currentError.cause || currentError.error || currentError.originalError;
+      }
+
+      // Replace OpenAI error labels with OpenRouter (case-insensitive, handle variations)
+      message = message.replace(/OpenAI API error/gi, "OpenRouter API error");
+      message = message.replace(/OpenAI/gi, "OpenRouter");
+      
+      return message;
+    }
+
+    let errorStr = String(error);
+    // Replace OpenAI error labels in string representation too
+    errorStr = errorStr.replace(/OpenAI API error/gi, "OpenRouter API error");
+    errorStr = errorStr.replace(/OpenAI/gi, "OpenRouter");
+    return errorStr;
+  }
+
+  private enhanceErrorMessage(errorMessage: string, modelId: string): string {
+    const lowerModelId = modelId.toLowerCase();
+
+    // TTS model detection
+    if (lowerModelId.includes("tts")) {
+      return `Model '${modelId}' is a text-to-speech (TTS) model, not a chat completion model. Please select a chat model like 'openai/gpt-4o', 'google/gemini-2.0-flash-exp', or 'anthropic/claude-3-5-sonnet'.`;
+    }
+
+    // Model not found/available
+    if (
+      errorMessage.includes("does not exist") ||
+      errorMessage.includes("not found") ||
+      errorMessage.includes("not available") ||
+      errorMessage.includes("The requested model")
+    ) {
+      // Check if it's a Gemini model and suggest correct naming
+      if (lowerModelId.includes("gemini")) {
+        return `Model '${modelId}' is not available on OpenRouter. The model ID may be incorrect. For Gemini models, try: 'google/gemini-2.0-flash-exp', 'google/gemini-pro', or 'google/gemini-flash-1.5'. Please check https://openrouter.ai/models for the complete list of available models. Make sure you're using the exact model ID from OpenRouter, not a display name.`;
+      }
+      return `Model '${modelId}' is not available on OpenRouter. ${errorMessage}. Please check https://openrouter.ai/models for available models. Common models: 'openai/gpt-4o', 'google/gemini-2.0-flash-exp', 'anthropic/claude-3-5-sonnet', 'deepseek/deepseek-chat'. Make sure you're using the exact model ID from OpenRouter, not a display name.`;
+    }
+
+    // Model not supported
+    if (
+      errorMessage.includes("not supported") ||
+      errorMessage.includes("invalid") ||
+      errorMessage.includes("Responses API")
+    ) {
+      return `Model '${modelId}' is not supported on OpenRouter. ${errorMessage}. Please check https://openrouter.ai/models for available models. Make sure you're using the exact model ID from OpenRouter, not a display name.`;
+    }
+
+    return errorMessage;
+  }
+
+  private convertMessages(
+    messages: LLMMessage[],
+    systemPrompt?: string
+  ): ModelMessage[] {
+    const aiMessages: ModelMessage[] = [];
 
     if (systemPrompt) {
-      openrouterMessages.push({
-        role: "system",
-        content: systemPrompt,
-      });
+      aiMessages.push({ role: "system", content: systemPrompt });
     }
 
     for (const msg of messages) {
-      // CRITICAL: Skip tool messages without valid toolCallId (invalid state - these cannot be sent to API)
-      const hasToolCallId = msg.toolCallId && typeof msg.toolCallId === "string" && msg.toolCallId.trim().length > 0;
-      
-      if (msg.role === "tool" && !hasToolCallId) {
-        console.warn("Skipping invalid tool message (missing toolCallId):", {
-          content: msg.content.substring(0, 100),
+      if (msg.role === "system") {
+        continue; // Already handled above
+      }
+
+      if (msg.role === "tool") {
+        if (!msg.toolCallId) {
+          console.warn("Skipping invalid tool message (missing toolCallId)");
+          continue;
+        }
+        aiMessages.push({
+          role: "tool",
+          content: [
+            {
+              type: "tool-result",
+              toolCallId: msg.toolCallId,
+              result: msg.content || "",
+            } as any,
+          ],
         });
-        continue;
+      } else if (msg.role === "assistant") {
+        if (msg.toolCalls?.length) {
+          aiMessages.push({
+            role: "assistant",
+            content: msg.content || "",
+            toolCalls: msg.toolCalls.map((tc) => ({
+              toolCallId: tc.id,
+              toolName: tc.name,
+              args: JSON.parse(tc.arguments),
+            })),
+          } as ModelMessage);
+        } else {
+          aiMessages.push({
+            role: "assistant",
+            content: msg.content || "",
+          });
+        }
+      } else {
+        // user role
+        aiMessages.push({
+          role: "user",
+          content: msg.content || "",
+        });
       }
-
-      const openrouterMsg: any = {
-        role: msg.role,
-        content: msg.content || null,
-      };
-
-      // Handle tool calls in assistant messages
-      if (msg.toolCalls && msg.toolCalls.length > 0) {
-        openrouterMsg.tool_calls = msg.toolCalls.map((tc) => ({
-          id: tc.id,
-          type: "function",
-          function: {
-            name: tc.name,
-            arguments: tc.arguments,
-          },
-        }));
-      }
-
-      // Handle tool results - ensure tool_call_id is set for tool role messages
-      if (msg.role === "tool" || hasToolCallId) {
-        openrouterMsg.role = "tool";
-        openrouterMsg.tool_call_id = msg.toolCallId!;
-      }
-
-      // Final validation
-      if (openrouterMsg.role === "tool" && !openrouterMsg.tool_call_id) {
-        continue;
-      }
-
-      openrouterMessages.push(openrouterMsg);
     }
 
-    return openrouterMessages;
+    return aiMessages;
   }
 }

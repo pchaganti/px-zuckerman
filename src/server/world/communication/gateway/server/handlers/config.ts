@@ -1,9 +1,55 @@
 import type { GatewayRequestHandlers } from "../types.js";
 import { loadConfig, saveConfig } from "@server/world/config/index.js";
+import deepmerge from "deepmerge";
 
 export interface LLMModel {
   id: string;
   name: string;
+}
+
+/**
+ * Get nested value from object using path array
+ */
+function getNestedValue(obj: any, path: string[]): any {
+  let current = obj;
+  for (const key of path) {
+    if (current && typeof current === "object" && !Array.isArray(current) && key in current) {
+      current = current[key];
+    } else {
+      return undefined;
+    }
+  }
+  return current;
+}
+
+/**
+ * Set nested value in object using path array
+ */
+function setNestedValue(obj: any, path: string[], value: any): void {
+  let current = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (!current[key] || typeof current[key] !== "object" || Array.isArray(current[key])) {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  current[path[path.length - 1]] = value;
+}
+
+/**
+ * Remove nested value from object using path array
+ */
+function removeNestedValue(obj: any, path: string[]): void {
+  let current = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (!(current[key] && typeof current[key] === "object" && !Array.isArray(current[key]))) {
+      return;
+    }
+    current = current[key];
+  }
+  delete current[path[path.length - 1]];
 }
 
 /**
@@ -37,9 +83,31 @@ export function createConfigHandlers(): Partial<GatewayRequestHandlers> {
 
         const config = await loadConfig();
         
-        // Deep merge updates into config
-        const updated = deepMerge(config, updates);
-        await saveConfig(updated);
+        // Manual replacement for specific paths that should replace instead of merge
+        // This prevents corruption when replacing strings/primitives with objects
+        const replacePaths = [
+          "agents.defaults.defaultModel",
+          "llm.openrouter.defaultModel",
+          "llm.anthropic.defaultModel",
+          "llm.openai.defaultModel",
+        ];
+        
+        // Apply replacements BEFORE any merging to prevent corruption
+        for (const path of replacePaths) {
+          const pathParts = path.split(".");
+          const updateValue = getNestedValue(updates, pathParts);
+          if (updateValue !== undefined) {
+            // Always replace these paths entirely, never merge
+            // This prevents string-to-object conversion issues
+            setNestedValue(config, pathParts, updateValue);
+            // Remove from updates so it doesn't get merged again
+            removeNestedValue(updates, pathParts);
+          }
+        }
+        
+        // Deep merge remaining updates into config using deepmerge
+        const updated = deepmerge(config, updates);
+        await saveConfig(updated as any);
         
         respond(true, { updated: true });
       } catch (err) {
@@ -260,26 +328,3 @@ export function createConfigHandlers(): Partial<GatewayRequestHandlers> {
   };
 }
 
-function deepMerge(target: any, source: any): any {
-  const output = { ...target };
-  
-  if (isObject(target) && isObject(source)) {
-    Object.keys(source).forEach((key) => {
-      if (isObject(source[key])) {
-        if (!(key in target)) {
-          Object.assign(output, { [key]: source[key] });
-        } else {
-          output[key] = deepMerge(target[key], source[key]);
-        }
-      } else {
-        Object.assign(output, { [key]: source[key] });
-      }
-    });
-  }
-  
-  return output;
-}
-
-function isObject(item: any): boolean {
-  return item && typeof item === "object" && !Array.isArray(item);
-}

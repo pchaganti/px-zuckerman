@@ -13,7 +13,7 @@ export interface SettingsState {
     apiKey: string;
     validated: boolean;
     error?: string;
-    model?: string;
+    model?: LLMModel;
   };
   advanced: {
     autoReconnect: boolean;
@@ -54,7 +54,7 @@ export interface UseSettingsReturn {
   validateApiKey: (key: string, provider: string) => boolean;
   testApiKey: () => Promise<void>;
   handleProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
-  handleModelChange: (model: string) => void;
+  handleModelChange: (model: LLMModel) => void;
   handleToolToggle: (toolId: string) => Promise<void>;
   handleEnableAllTools: () => Promise<void>;
   handleReset: () => Promise<void>;
@@ -90,7 +90,12 @@ export function useSettings(
     const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (stored) {
       try {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored) as any;
+        // Migrate old string model to object format if needed
+        if (parsed.llmProvider?.model && typeof parsed.llmProvider.model === "string") {
+          parsed.llmProvider.model = { id: parsed.llmProvider.model, name: parsed.llmProvider.model };
+        }
+        return parsed as SettingsState;
       } catch {
         return defaultSettings;
       }
@@ -146,6 +151,96 @@ export function useSettings(
       });
     }
   }, []);
+
+  // Load default provider and model from config when gateway connects
+  useEffect(() => {
+    const loadDefaultsFromConfig = async () => {
+      if (!gatewayClient?.isConnected()) return;
+
+      try {
+        const response = await gatewayClient.request("config.get", {});
+        if (response.ok && response.result) {
+          const config = (response.result as { config: any }).config;
+          const defaultProvider = config?.agents?.defaults?.defaultProvider;
+          const defaultModel = config?.agents?.defaults?.defaultModel;
+
+          if (!defaultProvider) return;
+
+          // Load API keys first if available
+          let apiKey = "";
+          let hasApiKey = false;
+
+          if (window.electronAPI) {
+            try {
+              const keys = await window.electronAPI.getApiKeys();
+              if (defaultProvider === "anthropic" && keys.anthropic) {
+                apiKey = keys.anthropic;
+                hasApiKey = true;
+              } else if (defaultProvider === "openai" && keys.openai) {
+                apiKey = keys.openai;
+                hasApiKey = true;
+              } else if (defaultProvider === "openrouter" && keys.openrouter) {
+                apiKey = keys.openrouter;
+                hasApiKey = true;
+              }
+            } catch {
+              // Ignore errors
+            }
+          }
+
+          // Determine model - prioritize provider-specific, then global default
+          const providerModel = config?.llm?.[defaultProvider]?.defaultModel;
+          const modelFromConfig = providerModel || defaultModel;
+
+          // Handle both old format (string) and new format (object)
+          let modelObj: LLMModel | undefined;
+          if (modelFromConfig) {
+            if (typeof modelFromConfig === "string") {
+              // Old format: just ID string, create minimal object
+              modelObj = { id: modelFromConfig, name: modelFromConfig };
+            } else if (typeof modelFromConfig === "object" && modelFromConfig.id) {
+              // New format: full object - extract only needed fields
+              modelObj = {
+                id: modelFromConfig.id,
+                name: modelFromConfig.name || modelFromConfig.id,
+              };
+              if ((modelFromConfig as any).createdAt) {
+                (modelObj as any).createdAt = (modelFromConfig as any).createdAt;
+              }
+            }
+          }
+
+          // Update settings with provider and model in a single update
+          setSettings((prev) => {
+            // Only update if provider is different or model needs to be set
+            const providerChanged = prev.llmProvider.provider !== defaultProvider;
+            const modelNeedsUpdate = modelObj && (!prev.llmProvider.model || prev.llmProvider.model.id !== modelObj.id);
+
+            if (providerChanged || modelNeedsUpdate) {
+              return {
+                ...prev,
+                llmProvider: {
+                  ...prev.llmProvider,
+                  ...(providerChanged && {
+                    provider: defaultProvider as "anthropic" | "openai" | "openrouter" | "mock",
+                    apiKey: hasApiKey ? apiKey : prev.llmProvider.apiKey,
+                    validated: hasApiKey,
+                  }),
+                  ...(modelNeedsUpdate && modelObj && { model: modelObj }),
+                },
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load defaults from config:", error);
+      }
+    };
+
+    loadDefaultsFromConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gatewayClient?.isConnected()]);
 
   // Load tool restrictions from config
   useEffect(() => {
@@ -243,15 +338,15 @@ export function useSettings(
     if (gatewayClient?.isConnected() && settings.llmProvider.provider && settings.llmProvider.provider !== "mock") {
       try {
         // Use selected model or fetch first available model from gateway
-        let selectedModel = settings.llmProvider.model;
+        let selectedModel: LLMModel | undefined = settings.llmProvider.model;
         
-        console.log(`[Settings] Saving model for provider ${settings.llmProvider.provider}, selectedModel: ${selectedModel}`);
+        console.log(`[Settings] Saving model for provider ${settings.llmProvider.provider}, selectedModel:`, selectedModel);
         
         if (!selectedModel) {
           // Try to use first available model from already fetched models
           if (availableModels.length > 0) {
-            selectedModel = availableModels[0].id;
-            console.log(`[Settings] Using first available model: ${selectedModel}`);
+            selectedModel = availableModels[0];
+            console.log(`[Settings] Using first available model:`, selectedModel);
           } else {
             // Fetch models from gateway to get the first available model
             try {
@@ -263,8 +358,8 @@ export function useSettings(
               if (modelsResponse.ok && modelsResponse.result) {
                 const models = (modelsResponse.result as { models: LLMModel[] }).models;
                 if (models && models.length > 0) {
-                  selectedModel = models[0].id;
-                  console.log(`[Settings] Fetched and using first model: ${selectedModel}`);
+                  selectedModel = models[0];
+                  console.log(`[Settings] Fetched and using first model:`, selectedModel);
                 }
               }
             } catch (error) {
@@ -280,7 +375,7 @@ export function useSettings(
           return;
         }
 
-        // Update config via gateway
+        // Update config via gateway - save the full model object
         const updates: any = {
           agents: {
             defaults: {
@@ -302,7 +397,7 @@ export function useSettings(
           console.error(`[Settings] Failed to update config: ${errorMsg}`, response.error);
           alert(`Failed to save default model: ${errorMsg}`);
         } else {
-          console.log(`[Settings] Successfully saved default model: ${selectedModel} for provider: ${settings.llmProvider.provider}`);
+          console.log(`[Settings] Successfully saved default model: ${selectedModel.id} (${selectedModel.name}) for provider: ${settings.llmProvider.provider}`);
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : "Unknown error";
@@ -409,7 +504,7 @@ export function useSettings(
               setAvailableModels(models);
               // Set first model as default if none selected
               if (!settings.llmProvider.model) {
-                updateSettings("llmProvider", { model: models[0].id });
+                updateSettings("llmProvider", { model: models[0] });
               }
             } else {
               setAvailableModels([]);
@@ -492,7 +587,7 @@ export function useSettings(
               ...prev,
               llmProvider: {
                 ...prev.llmProvider,
-                model: models[0].id,
+                model: models[0],
               },
             }));
           }
@@ -523,11 +618,31 @@ export function useSettings(
         const response = await gatewayClient.request("config.get", {});
         if (response.ok && response.result) {
           const config = (response.result as { config: any }).config;
-          const model = config?.llm?.[settings.llmProvider.provider]?.defaultModel ||
+          const modelFromConfig = config?.llm?.[settings.llmProvider.provider]?.defaultModel ||
                        config?.agents?.defaults?.defaultModel;
           
-          if (model && model !== settings.llmProvider.model) {
-            updateSettings("llmProvider", { model });
+          if (modelFromConfig) {
+            // Handle both old format (string) and new format (object)
+            let modelObj: LLMModel;
+            if (typeof modelFromConfig === "string") {
+              // Old format: just ID string, try to find full object from available models
+              modelObj = availableModels.find(m => m.id === modelFromConfig) || { id: modelFromConfig, name: modelFromConfig };
+            } else if (typeof modelFromConfig === "object" && modelFromConfig.id) {
+              // New format: full object - extract only needed fields
+              modelObj = {
+                id: modelFromConfig.id,
+                name: modelFromConfig.name || modelFromConfig.id,
+              };
+              if ((modelFromConfig as any).createdAt) {
+                (modelObj as any).createdAt = (modelFromConfig as any).createdAt;
+              }
+            } else {
+              return; // Invalid format
+            }
+            
+            if (!settings.llmProvider.model || settings.llmProvider.model.id !== modelObj.id) {
+              updateSettings("llmProvider", { model: modelObj });
+            }
           }
         }
       } catch (error) {
@@ -535,10 +650,10 @@ export function useSettings(
       }
     };
 
-    if (gatewayClient?.isConnected() && settings.llmProvider.provider) {
+    if (gatewayClient?.isConnected() && settings.llmProvider.provider && availableModels.length > 0) {
       loadModelFromConfig();
     }
-  }, [gatewayClient?.isConnected()]);
+  }, [gatewayClient?.isConnected(), settings.llmProvider.provider, availableModels]);
 
   const handleProviderChange = useCallback((provider: "anthropic" | "openai" | "openrouter" | "mock") => {
     updateSettings("llmProvider", {
@@ -551,7 +666,7 @@ export function useSettings(
     setAvailableModels([]);
   }, [updateSettings]);
 
-  const handleModelChange = useCallback((model: string) => {
+  const handleModelChange = useCallback((model: LLMModel) => {
     updateSettings("llmProvider", { model });
   }, [updateSettings]);
 
