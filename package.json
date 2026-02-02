@@ -35,13 +35,9 @@
     "node": ">=22.0.0"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.35",
-    "@ai-sdk/openai": "^3.0.25",
-    "@openrouter/ai-sdk-provider": "^2.1.1",
     "@sinclair/typebox": "^0.34.48",
     "@slack/bolt": "^4.6.0",
     "@whiskeysockets/baileys": "7.0.0-rc.9",
-    "ai": "^6.0.67",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "croner": "^10.0.1",
