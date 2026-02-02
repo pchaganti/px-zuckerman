@@ -13,7 +13,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuAction,
   SidebarMenuBadge,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
@@ -63,7 +62,10 @@ function ConversationItem({
         <span>{conversation.label || conversation.id}</span>
       </SidebarMenuButton>
       {(onRestore || onArchive) && (
-        <SidebarMenuAction showOnHover>
+        <div
+          data-sidebar="menu-action"
+          className="absolute right-1 top-1.5 flex aspect-square w-5 items-center justify-center rounded-md p-0 text-sidebar-foreground outline-none ring-sidebar-ring transition-transform hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 peer-hover/menu-button:text-sidebar-accent-foreground [&>svg]:size-4 [&>svg]:shrink-0 after:absolute after:-inset-2 after:md:hidden peer-data-[size=sm]/menu-button:top-1 peer-data-[size=default]/menu-button:top-1.5 peer-data-[size=lg]/menu-button:top-2.5 group-data-[collapsible=icon]:hidden group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 peer-data-[active=true]/menu-button:text-sidebar-accent-foreground md:opacity-0"
+        >
           {onRestore && (
             <button
               onClick={(e) => {
@@ -86,7 +88,7 @@ function ConversationItem({
               <Archive className="h-3.5 w-3.5" />
             </button>
           )}
-        </SidebarMenuAction>
+        </div>
       )}
     </SidebarMenuItem>
   );
