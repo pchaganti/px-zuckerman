@@ -165,6 +165,7 @@ export class ZuckermanAwareness implements AgentRuntime {
           model: selectedModel,
           temperature,
           llmTools,
+          landDir,
         });
       }
 
@@ -323,8 +324,9 @@ export class ZuckermanAwareness implements AgentRuntime {
     model?: LLMModel;
     temperature?: number;
     llmTools: LLMTool[];
+    landDir?: string;
   }): Promise<AgentRunResult> {
-    const { sessionId, runId, messages, toolCalls, securityContext, stream, model, temperature, llmTools } = params;
+    const { sessionId, runId, messages, toolCalls, securityContext, stream, model, temperature, llmTools, landDir } = params;
     // #region agent log
     fetch('http://127.0.0.1:7245/ingest/1837ab77-87c8-488b-a311-1ab411424999',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'runtime.ts:327',message:'handleToolCalls entry',data:{messagesLength:messages.length,toolCallsCount:toolCalls.length,toolCallIds:toolCalls.map(tc=>tc.id),messageRoles:messages.map(m=>m.role)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B,D'})}).catch(()=>{});
     // #endregion
@@ -389,6 +391,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         // Create execution context for tool
         const executionContext: ToolExecutionContext = {
           sessionId,
+          landDir,
           stream: stream
             ? (event) => {
                 stream({
@@ -523,6 +526,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         model,
         temperature,
         llmTools,
+        landDir: params.landDir,
       });
     }
 

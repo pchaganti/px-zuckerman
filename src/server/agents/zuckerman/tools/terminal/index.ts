@@ -29,6 +29,7 @@ export interface ToolResult {
  */
 export interface ToolExecutionContext {
   sessionId: string;
+  landDir?: string; // Workspace/land directory (sandbox path when sandboxed)
   stream?: (event: {
     type: "tool.call" | "tool.result";
     data: {

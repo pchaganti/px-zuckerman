@@ -192,7 +192,7 @@ export function createDeviceTool(): Tool {
 
           case "screen_capture": {
             // Capture device screen (works on local machine)
-            const landDir = join(homedir(), ".zuckerman", "land");
+            const landDir = executionContext?.landDir || join(homedir(), ".zuckerman", "land");
             const screenshotsDir = join(landDir, "screenshots");
             if (!existsSync(screenshotsDir)) {
               mkdirSync(screenshotsDir, { recursive: true });

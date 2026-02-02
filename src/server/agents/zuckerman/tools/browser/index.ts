@@ -242,8 +242,8 @@ export function createBrowserTool(): Tool {
                   ? params.savePath.replace("~", homedir())
                   : params.savePath;
               } else {
-                // Default: save to land/screenshots/
-                const landDir = join(homedir(), ".zuckerman", "land");
+                // Default: save to land/screenshots/ (use sandbox path if available)
+                const landDir = executionContext?.landDir || join(homedir(), ".zuckerman", "land");
                 const screenshotsDir = join(landDir, "screenshots");
                 if (!existsSync(screenshotsDir)) {
                   mkdirSync(screenshotsDir, { recursive: true });
