@@ -69,7 +69,7 @@ export async function truncateOutput(
   const preview = out.join("\n");
 
   // Provide actionable hints instead of saving to disk
-  const hint = `⚠️ Output truncated (${removed} ${unit} removed) to fit within context limits.\n\nTo access more content:\n- Use grep tool to search for specific patterns\n- Use filesystem read_file with offset/limit parameters to read specific sections\n- For file operations, check file size first with file_stats operation`;
+  const hint = `⚠️ Output truncated (${removed} ${unit} removed) to fit within context limits.\n\nTo access more content:\n- Use terminal with grep to search for specific patterns\n- Use terminal commands (head, tail, sed, awk) to read specific sections of files\n- For file operations, use terminal commands (ls, stat, wc) to check file size and properties`;
   
   const message =
     direction === "head"

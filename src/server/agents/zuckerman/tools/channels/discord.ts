@@ -1,7 +1,7 @@
 import type { Tool } from "../terminal/index.js";
 import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
 import { getChannelRegistry } from "./registry.js";
-import { SessionManager } from "@server/agents/zuckerman/sessions/index.js";
+import { SessionManager, deriveSessionKey } from "@server/agents/zuckerman/sessions/index.js";
 import { loadSessionStore, resolveSessionStorePath } from "@server/agents/zuckerman/sessions/store.js";
 
 export function createDiscordTool(): Tool {
@@ -48,21 +48,41 @@ export function createDiscordTool(): Tool {
         if (!channelId || channelId === "me" || channelId.toLowerCase() === "myself") {
           if (executionContext?.sessionId && securityContext?.agentId) {
             try {
-              // Load session store to get delivery context
-              const storePath = resolveSessionStorePath(securityContext.agentId);
-              const store = loadSessionStore(storePath);
+              // Use SessionManager to get session state, then derive sessionKey for reliable lookup
+              const sessionManager = new SessionManager(securityContext.agentId);
+              const sessionState = sessionManager.getSession(executionContext.sessionId);
               
-              // Find session entry by sessionId
-              const sessionEntry = Object.values(store).find(
-                entry => entry.sessionId === executionContext.sessionId
-              );
-              
-              // Try to get channel ID from delivery context
-              if (sessionEntry) {
-                // Check if this session is from Discord channel
-                if (sessionEntry.lastChannel === "discord" || sessionEntry.origin?.channel === "discord") {
-                  channelId = sessionEntry.deliveryContext?.to || 
-                              sessionEntry.lastTo;
+              if (sessionState) {
+                // Derive sessionKey from session state
+                const sessionKey = deriveSessionKey(
+                  securityContext.agentId,
+                  sessionState.session.type,
+                  sessionState.session.label
+                );
+                
+                // Load session store and look up entry by sessionKey (more reliable than searching by sessionId)
+                const storePath = resolveSessionStorePath(securityContext.agentId);
+                const store = loadSessionStore(storePath);
+                const sessionEntry = store[sessionKey];
+                
+                // Try to get channel ID from delivery context
+                if (sessionEntry) {
+                  // Check if this session is from Discord channel
+                  if (sessionEntry.lastChannel === "discord" || sessionEntry.origin?.channel === "discord") {
+                    channelId = sessionEntry.deliveryContext?.to || 
+                                sessionEntry.lastTo;
+                  }
+                }
+              } else {
+                // Fallback: try to find by sessionId if session not in memory
+                const storePath = resolveSessionStorePath(securityContext.agentId);
+                const store = loadSessionStore(storePath);
+                const sessionEntry = Object.values(store).find(
+                  entry => entry.sessionId === executionContext.sessionId
+                );
+                
+                if (sessionEntry && (sessionEntry.lastChannel === "discord" || sessionEntry.origin?.channel === "discord")) {
+                  channelId = sessionEntry.deliveryContext?.to || sessionEntry.lastTo;
                 }
               }
             } catch (err) {

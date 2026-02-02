@@ -1,6 +1,9 @@
-import { Bot, Context } from "grammy";
+import { Bot, Context, InputFile } from "grammy";
 import type { Channel, ChannelMessage } from "./types.js";
 import type { TelegramConfig } from "@server/world/config/types.js";
+import { readFileSync, existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { homedir } from "node:os";
 
 enum ChannelState {
   IDLE = "idle",
@@ -130,9 +133,140 @@ export class TelegramChannel implements Channel {
     }
 
     try {
-      await this.bot.api.sendMessage(Number(to), message);
+      // Parse MEDIA: paths and markdown image links from the message
+      const mediaPaths: string[] = [];
+      const lines = message.split("\n");
+      const textLines: string[] = [];
+      let hasAudioAsVoice = false;
+
+      // Regex to match markdown image links: ![alt](path) or [![alt](path)](url)
+      const markdownImageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+      for (const line of lines) {
+        if (line.trim() === "[[audio_as_voice]]") {
+          hasAudioAsVoice = true;
+          continue;
+        }
+        if (line.startsWith("MEDIA:")) {
+          const mediaPath = line.substring(6).trim();
+          if (mediaPath) {
+            mediaPaths.push(mediaPath);
+          }
+          continue;
+        }
+        
+        // Check for markdown image links in the line
+        let modifiedLine = line;
+        const matches = Array.from(line.matchAll(markdownImageRegex));
+        for (const match of matches) {
+          const imagePath = match[2];
+          // Handle sandbox: protocol paths
+          if (imagePath.startsWith("sandbox:")) {
+            // Extract path from sandbox: protocol
+            const actualPath = imagePath.replace("sandbox:", "").trim();
+            if (actualPath) {
+              mediaPaths.push(actualPath);
+              // Remove the markdown image link from the text
+              modifiedLine = modifiedLine.replace(match[0], match[1] || "").trim();
+            }
+          } else if (!imagePath.startsWith("http")) {
+            // Local file path (not a URL)
+            mediaPaths.push(imagePath);
+            // Remove the markdown image link from the text
+            modifiedLine = modifiedLine.replace(match[0], match[1] || "").trim();
+          }
+        }
+        
+        if (modifiedLine.trim()) {
+          textLines.push(modifiedLine);
+        }
+      }
+
+      const textContent = textLines.join("\n").trim();
+
+      // Send media files if any
+      for (const mediaPath of mediaPaths) {
+        try {
+          // Resolve path (handle ~ and relative paths)
+          let resolvedPath = mediaPath;
+          if (mediaPath.startsWith("~")) {
+            resolvedPath = mediaPath.replace("~", homedir());
+          } else if (!mediaPath.startsWith("/")) {
+            // Relative path - try resolving from home directory
+            resolvedPath = join(homedir(), mediaPath);
+          }
+
+          if (!existsSync(resolvedPath)) {
+            console.warn(`[Telegram] Media file not found: ${resolvedPath}`);
+            continue;
+          }
+
+          // Determine if it's an image or audio file
+          const ext = resolvedPath.toLowerCase().split(".").pop();
+          const isImage = ["png", "jpg", "jpeg", "gif", "webp"].includes(ext || "");
+          const isAudio = ["mp3", "ogg", "opus", "wav", "m4a"].includes(ext || "");
+
+          if (isImage) {
+            // Send as photo
+            const file = new InputFile(resolvedPath);
+            await this.bot.api.sendPhoto(Number(to), file, {
+              caption: mediaPaths.length === 1 && textContent ? textContent : undefined,
+            });
+          } else if (isAudio && hasAudioAsVoice && ext === "opus") {
+            // Send as voice message (for opus files with audio_as_voice tag)
+            const file = new InputFile(resolvedPath);
+            await this.bot.api.sendVoice(Number(to), file);
+          } else if (isAudio) {
+            // Send as audio file
+            const file = new InputFile(resolvedPath);
+            await this.bot.api.sendAudio(Number(to), file);
+          } else {
+            // Send as document
+            const file = new InputFile(resolvedPath);
+            await this.bot.api.sendDocument(Number(to), file, {
+              caption: mediaPaths.length === 1 && textContent ? textContent : undefined,
+            });
+          }
+        } catch (error) {
+          console.error(`[Telegram] Failed to send media file ${mediaPath}:`, error);
+          // Continue with other media files
+        }
+      }
+
+      // Send text message if there's text content and no media, or if there are multiple media files
+      if (textContent && (mediaPaths.length === 0 || mediaPaths.length > 1)) {
+        await this.bot.api.sendMessage(Number(to), textContent);
+      }
     } catch (error) {
       console.error(`[Telegram] Failed to send message to ${to}:`, error);
+      throw error;
+    }
+  }
+
+  async sendPhoto(photoPath: string, to: string, caption?: string): Promise<void> {
+    if (this.state !== ChannelState.CONNECTED || !this.bot) {
+      throw new Error("Telegram channel is not connected");
+    }
+
+    try {
+      // Resolve path
+      let resolvedPath = photoPath;
+      if (photoPath.startsWith("~")) {
+        resolvedPath = photoPath.replace("~", homedir());
+      } else if (!photoPath.startsWith("/")) {
+        resolvedPath = join(homedir(), photoPath);
+      }
+
+      if (!existsSync(resolvedPath)) {
+        throw new Error(`Photo file not found: ${resolvedPath}`);
+      }
+
+      const file = new InputFile(resolvedPath);
+      await this.bot.api.sendPhoto(Number(to), file, {
+        caption,
+      });
+    } catch (error) {
+      console.error(`[Telegram] Failed to send photo to ${to}:`, error);
       throw error;
     }
   }

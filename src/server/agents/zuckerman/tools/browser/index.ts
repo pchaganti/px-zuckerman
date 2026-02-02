@@ -14,13 +14,13 @@ export function createBrowserTool(): Tool {
   return {
     definition: {
       name: "browser",
-      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Use 'navigate_and_screenshot' action to navigate and screenshot in one call (faster). Browser closes after each action.",
+      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Browser closes after each action. Screenshots are saved to local file paths that can be shared or sent via appropriate channels.",
       parameters: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            description: "Action to perform: navigate, snapshot, screenshot, navigate_and_screenshot, click, type, evaluate",
+            description: "Action to perform: navigate, snapshot, screenshot, click, type, evaluate",
           },
           url: {
             type: "string",
@@ -77,7 +77,7 @@ export function createBrowserTool(): Tool {
         }
 
         // Validate action before launching browser
-        const validActions = ["navigate", "snapshot", "navigate_and_screenshot", "screenshot", "click", "type", "evaluate"];
+        const validActions = ["navigate", "snapshot", "screenshot", "click", "type", "evaluate"];
         if (!validActions.includes(action)) {
           return {
             success: false,
@@ -227,69 +227,6 @@ export function createBrowserTool(): Tool {
               }
             }
 
-            case "navigate_and_screenshot": {
-              // Combined action: navigate then screenshot (faster, browser stays open)
-              const url = typeof params.url === "string" ? params.url : undefined;
-              if (!url) {
-                return { success: false, error: "url is required for navigate_and_screenshot action" };
-              }
-              
-              // Navigate first
-              await page.goto(url, { 
-                waitUntil: "domcontentloaded", // Faster than networkidle
-                timeout: 30000,
-              });
-              
-              // Wait a bit for page to render and ensure it's visible
-              await page.waitForTimeout(2000);
-              
-              // Bring page to front
-              await page.bringToFront();
-              
-              // Take screenshot
-              const fullPage = params.fullPage === true;
-              const screenshot = await page.screenshot({
-                fullPage,
-                type: "png",
-              });
-              
-              // Determine save path
-              let savePath: string;
-              if (typeof params.savePath === "string" && params.savePath) {
-                savePath = params.savePath.startsWith("~") 
-                  ? params.savePath.replace("~", homedir())
-                  : params.savePath;
-              } else {
-                const landDir = join(homedir(), ".zuckerman", "land");
-                const screenshotsDir = join(landDir, "screenshots");
-                if (!existsSync(screenshotsDir)) {
-                  mkdirSync(screenshotsDir, { recursive: true });
-                }
-                const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-                const urlSlug = url.replace(/[^a-zA-Z0-9]/g, "-").substring(0, 50);
-                savePath = join(screenshotsDir, `screenshot-${timestamp}-${urlSlug}.png`);
-              }
-              
-              // Ensure directory exists
-              const dir = dirname(savePath);
-              if (!existsSync(dir)) {
-                mkdirSync(dir, { recursive: true });
-              }
-              
-              // Save screenshot to file
-              writeFileSync(savePath, screenshot);
-              
-              return {
-                success: true,
-                result: {
-                  path: savePath,
-                  url: page.url(),
-                  fullPage,
-                  navigated: true,
-                },
-              };
-            }
-
             case "screenshot": {
               const fullPage = params.fullPage === true;
               const screenshot = await page.screenshot({
@@ -387,7 +324,7 @@ export function createBrowserTool(): Tool {
             default:
               return {
                 success: false,
-                error: `Unknown action: ${action}. Supported: navigate, snapshot, screenshot, navigate_and_screenshot, click, type, evaluate`,
+                error: `Unknown action: ${action}. Supported: navigate, snapshot, screenshot, click, type, evaluate`,
               };
           }
         } finally {

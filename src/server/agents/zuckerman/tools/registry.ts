@@ -3,8 +3,6 @@ import { createTerminalTool } from "./terminal/index.js";
 import { createBrowserTool } from "./browser/index.js";
 import { createCronTool } from "./cron/index.js";
 import { createDeviceTool } from "./device/index.js";
-import { createFilesystemTool } from "./filesystem/index.js";
-import { createGrepTool } from "./grep/index.js";
 import { createMultiEditTool } from "./multiedit/index.js";
 import { createBatchTool, type BatchExecutionContext } from "./batch/index.js";
 import { createWhatsAppTool } from "./channels/whatsapp.js";
@@ -24,8 +22,6 @@ export class ZuckermanToolRegistry {
     this.register(createBrowserTool());
     this.register(createCronTool());
     this.register(createDeviceTool());
-    this.register(createFilesystemTool());
-    this.register(createGrepTool());
     this.register(createMultiEditTool());
     this.register(createWhatsAppTool());
     this.register(createTelegramTool());

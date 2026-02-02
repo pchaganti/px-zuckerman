@@ -52,7 +52,7 @@ export function createTerminalTool(): Tool {
   return {
     definition: {
       name: "terminal",
-      description: "Execute shell commands and return the output. Supports any shell command including pipes, redirects, and other shell features. If you need a tool or package that isn't installed, feel free to install it via brew or other package managers. Download and install whatever dependencies are needed to complete the task.",
+      description: "Execute any shell command with full control over the computer. This is your primary tool for system operations - use it for everything: file operations (grep, find, ls, cat, etc.), package management (brew, apt, npm, etc.), process management, network operations, text processing, and any other command-line task. You have complete terminal access - use it to accomplish any task that requires system-level operations. Install tools, run scripts, search files, manipulate data, and control the system as needed.",
       parameters: {
         type: "object",
         properties: {
