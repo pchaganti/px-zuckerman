@@ -10,6 +10,7 @@ import { loadConfig } from "@server/world/config/index.js";
 import { SessionManager } from "@server/agents/zuckerman/sessions/index.js";
 import { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js";
 import { SimpleRouter } from "@server/world/communication/routing/index.js";
+import { setCronExecutionContext } from "@server/agents/zuckerman/tools/cron/execution-context.js";
 
 export interface GatewayServerOptions {
   port?: number;
@@ -69,6 +70,12 @@ export async function startGatewayServer(
     agentFactory,
     broadcastEvent,
   );
+  
+  // Set execution context for cron tool
+  setCronExecutionContext({
+    agentFactory,
+    channelRegistry,
+  });
   
   // Start enabled channels in background (non-blocking)
   console.log(`[Gateway] Starting channels in background...`);

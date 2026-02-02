@@ -146,7 +146,7 @@ export function toOpenAIRequest(params: {
     model: params.model,
     messages,
     temperature: params.temperature,
-    max_tokens: params.maxTokens,
+    ...(params.maxTokens !== undefined ? { max_tokens: params.maxTokens } : {}), // Only include if provided (no limit)
     tools,
     stream: params.stream,
   };

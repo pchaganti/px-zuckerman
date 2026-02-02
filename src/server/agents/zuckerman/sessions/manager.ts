@@ -21,6 +21,7 @@ import {
   resolveTranscriptPath,
   messagesToTranscriptEntries,
 } from "./transcript.js";
+import { activityRecorder } from "@server/world/activity/index.js";
 
 /**
  * Derive session key from agent ID and session type/label
@@ -244,6 +245,16 @@ export class SessionManager {
       console.error("Failed to persist session:", err);
     });
 
+    // Record session creation
+    activityRecorder.recordSessionCreate(
+      agentId || this.agentId,
+      id,
+      type,
+      label,
+    ).catch((err) => {
+      console.warn("Failed to record session creation activity:", err);
+    });
+
     return session;
   }
 
@@ -257,6 +268,14 @@ export class SessionManager {
       state.session.lastActivity = Date.now();
       this.persistSessions().catch((err) => {
         console.error("Failed to persist session update:", err);
+      });
+      
+      // Record session update
+      activityRecorder.recordSessionUpdate(
+        this.agentId,
+        id,
+      ).catch((err) => {
+        console.warn("Failed to record session update activity:", err);
       });
     }
   }

@@ -27,7 +27,7 @@ export class AnthropicProvider implements LLMProvider {
       messages,
       systemPrompt,
       temperature = 1.0,
-      maxTokens = 4096,
+      maxTokens,
       model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;
@@ -97,7 +97,7 @@ export class AnthropicProvider implements LLMProvider {
       messages,
       systemPrompt,
       temperature = 1.0,
-      maxTokens = 4096,
+      maxTokens,
       model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;

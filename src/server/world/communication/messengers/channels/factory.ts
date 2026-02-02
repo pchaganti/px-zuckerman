@@ -189,6 +189,16 @@ export async function initializeChannels(
         // Add message to session (store original content, but send formatted to agent)
         sm.addMessage(route.sessionId, "user", message.content);
 
+        // Record incoming channel message
+        const { activityRecorder } = await import("@server/world/activity/index.js");
+        await activityRecorder.recordChannelMessageIncoming(
+          route.agentId,
+          route.sessionId,
+          channelId,
+          message.from,
+          message.content,
+        );
+
         // Run agent
         const config = await import("@server/world/config/index.js").then(m => m.loadConfig());
         const { resolveSecurityContext } = await import("@server/world/execution/security/context/index.js");
@@ -211,6 +221,15 @@ export async function initializeChannels(
 
         // Send reply back through channel
         await channel.send(result.response, message.from);
+        
+        // Record outgoing channel message
+        await activityRecorder.recordChannelMessageOutgoing(
+          route.agentId,
+          route.sessionId,
+          channelId,
+          message.from,
+          result.response,
+        );
       } catch (error) {
         console.error("[Channels] Error processing message:", error);
       }

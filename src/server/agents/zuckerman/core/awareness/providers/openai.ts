@@ -45,7 +45,7 @@ export class OpenAIProvider implements LLMProvider {
       messages,
       systemPrompt,
       temperature = 1.0,
-      maxTokens = 4096,
+      maxTokens,
       model = { id: "gpt-4o" },
       tools,
     } = params;
@@ -101,7 +101,7 @@ export class OpenAIProvider implements LLMProvider {
       messages,
       systemPrompt,
       temperature = 1.0,
-      maxTokens = 4096,
+      maxTokens,
       model = { id: "gpt-4o" },
       tools,
     } = params;

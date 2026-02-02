@@ -18,6 +18,7 @@ import {
   loadMemoryForSession,
   formatMemoryForPrompt,
 } from "@server/agents/zuckerman/core/memory/persistence.js";
+import { activityRecorder } from "@server/world/activity/index.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
@@ -84,6 +85,14 @@ export class ZuckermanAwareness implements AgentRuntime {
     const { sessionId, message, thinkingLevel = "off", temperature, model, securityContext, stream } = params;
     const runId = randomUUID();
 
+    // Record agent run start
+    await activityRecorder.recordAgentRunStart(
+      this.agentId,
+      sessionId,
+      runId,
+      message,
+    );
+
     // Emit lifecycle start event
     if (stream) {
       await stream({
@@ -120,9 +129,8 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Load session history
       const session = this.sessionManager.getSession(sessionId);
       if (session) {
-        // Add previous messages (limit to last 20 for context window)
-        const history = session.messages.slice(-20);
-        for (const msg of history) {
+        // Add all previous messages (no limit - uses full model context window)
+        for (const msg of session.messages) {
           messages.push({
             role: msg.role === "user" ? "user" : "assistant",
             content: msg.content,
@@ -181,6 +189,16 @@ export class ZuckermanAwareness implements AgentRuntime {
         });
       }
 
+      // Record agent run completion
+      await activityRecorder.recordAgentRunComplete(
+        this.agentId,
+        sessionId,
+        runId,
+        result.content,
+        result.tokensUsed?.total,
+        undefined, // toolsUsed will be tracked separately
+      );
+
       return {
         runId,
         response: result.content,
@@ -198,6 +216,14 @@ export class ZuckermanAwareness implements AgentRuntime {
           },
         });
       }
+      
+      // Record agent run error
+      await activityRecorder.recordAgentRunError(
+        this.agentId,
+        sessionId,
+        runId,
+        err instanceof Error ? err.message : String(err),
+      );
       console.error(`[ZuckermanRuntime] Error in run:`, err);
       throw err;
     }
@@ -370,23 +396,30 @@ export class ZuckermanAwareness implements AgentRuntime {
       }
 
       try {
+        // Parse arguments
+        const args = typeof toolCall.arguments === "string"
+          ? JSON.parse(toolCall.arguments)
+          : toolCall.arguments;
+
         // Emit tool start event (use repaired name if applicable)
         if (stream) {
           stream({
             type: "tool.call",
             data: {
               tool: tool.definition.name, // Use actual tool name, not the call name
-              toolArgs: typeof toolCall.arguments === "string" 
-                ? JSON.parse(toolCall.arguments) 
-                : toolCall.arguments,
+              toolArgs: args,
             },
           });
         }
 
-        // Parse arguments
-        const args = typeof toolCall.arguments === "string"
-          ? JSON.parse(toolCall.arguments)
-          : toolCall.arguments;
+        // Record tool call
+        await activityRecorder.recordToolCall(
+          this.agentId,
+          sessionId,
+          runId,
+          tool.definition.name,
+          args,
+        );
 
         // Create execution context for tool
         const executionContext: ToolExecutionContext = {
@@ -448,6 +481,15 @@ export class ZuckermanAwareness implements AgentRuntime {
           });
         }
 
+        // Record tool result
+        await activityRecorder.recordToolResult(
+          this.agentId,
+          sessionId,
+          runId,
+          tool.definition.name,
+          result,
+        );
+
         // Convert result to string for LLM
         let resultContent: string;
         if (typeof result === "string") {
@@ -477,6 +519,16 @@ export class ZuckermanAwareness implements AgentRuntime {
         // #endregion
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
+        
+        // Record tool error
+        await activityRecorder.recordToolError(
+          this.agentId,
+          sessionId,
+          runId,
+          toolCall.name,
+          errorMsg,
+        );
+        
         toolCallResults.push({
           toolCallId: toolCall.id,
           role: "tool" as const,
@@ -541,6 +593,16 @@ export class ZuckermanAwareness implements AgentRuntime {
         },
       });
     }
+
+    // Record agent run completion (from tool calls path)
+    await activityRecorder.recordAgentRunComplete(
+      this.agentId,
+      sessionId,
+      runId,
+      result.content,
+      result.tokensUsed?.total,
+      undefined, // toolsUsed will be tracked separately
+    );
 
     return {
       runId,

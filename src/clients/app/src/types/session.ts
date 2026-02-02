@@ -5,6 +5,7 @@ export interface Session {
   label: string;
   type: SessionType;
   agentId?: string;
+  lastActivity?: number;
 }
 
 export interface SessionState {

@@ -100,6 +100,15 @@ export function ChatView({ state, onAction }: ChatViewProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle Cmd/Ctrl+A to select all text in textarea
+    if ((e.metaKey || e.ctrlKey) && e.key === "a") {
+      e.preventDefault();
+      if (textareaRef.current) {
+        textareaRef.current.select();
+      }
+      return;
+    }
+    
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -172,18 +181,20 @@ export function ChatView({ state, onAction }: ChatViewProps) {
               {state.sessions.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">No sessions</div>
               ) : (
-                state.sessions.map((session) => (
-                  <DropdownMenuItem
-                    key={session.id}
-                    onClick={() => onAction("select-session", { sessionId: session.id })}
-                    className={session.id === state.currentSessionId ? "bg-accent" : ""}
-                  >
-                    {session.label || session.id}
-                    {session.id === state.currentSessionId && (
-                      <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />
-                    )}
-                  </DropdownMenuItem>
-                ))
+                [...state.sessions]
+                  .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0))
+                  .map((session) => (
+                    <DropdownMenuItem
+                      key={session.id}
+                      onClick={() => onAction("select-session", { sessionId: session.id })}
+                      className={session.id === state.currentSessionId ? "bg-accent" : ""}
+                    >
+                      {session.label || session.id}
+                      {session.id === state.currentSessionId && (
+                        <CheckCircle2 className="h-3.5 w-3.5 ml-auto text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -249,6 +260,8 @@ export function ChatView({ state, onAction }: ChatViewProps) {
               className="flex-1 min-h-[36px] max-h-[120px] resize-none text-sm bg-transparent border-0 focus-visible:ring-0 focus-visible:ring-offset-0 px-3 py-2 pr-20"
               style={{
                 height: "auto",
+                userSelect: "text",
+                WebkitUserSelect: "text",
               }}
             />
             <div className="absolute right-10 bottom-2 flex items-center gap-1 text-[11px] text-muted-foreground pointer-events-none">

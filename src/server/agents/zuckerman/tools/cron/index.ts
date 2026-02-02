@@ -1,341 +1,40 @@
-import { Cron } from "croner";
 import type { SecurityContext } from "@server/world/execution/security/types.js";
 import { isToolAllowed } from "@server/world/execution/security/policy/tool-policy.js";
-import type { Tool, ToolDefinition, ToolResult } from "../terminal/index.js";
-import { join } from "node:path";
-import { homedir } from "node:os";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import type { Tool } from "../terminal/index.js";
+import type { CalendarEvent, EventAction } from "./types.js";
+import { getEvents, setEvents, loadEvents, saveEvents } from "./storage.js";
+import { scheduleEvents, scheduleEvent, stopCronInstance } from "./scheduler.js";
+import { executeEvent } from "./executor.js";
+import { activityRecorder } from "@server/world/activity/index.js";
 
-const CALENDAR_DIR = join(homedir(), ".zuckerman", "calendar");
-const EVENTS_FILE = join(CALENDAR_DIR, "events.json");
-const OLD_CRON_DIR = join(homedir(), ".zuckerman", "cron");
-const OLD_JOBS_FILE = join(OLD_CRON_DIR, "jobs.json");
-
-interface RecurrenceRule {
-  type: "none" | "daily" | "weekly" | "monthly" | "yearly" | "cron";
-  interval?: number;
-  endDate?: number;
-  count?: number;
-  cronExpression?: string;
-  timezone?: string;
+// Initialize events on module load
+const loadedEvents = loadEvents();
+const eventsMap = new Map<string, CalendarEvent>();
+for (const event of loadedEvents) {
+  eventsMap.set(event.id, event);
 }
-
-interface EventAction {
-  type: "agentTurn" | "systemEvent";
-  message?: string;
-  text?: string;
-  sessionTarget: "main" | "isolated";
-}
-
-interface CalendarEvent {
-  id: string;
-  title: string;
-  startTime: number;
-  endTime?: number;
-  recurrence?: RecurrenceRule;
-  action: EventAction;
-  enabled: boolean;
-  createdAt: number;
-  lastTriggeredAt?: number;
-  nextOccurrenceAt?: number;
-}
-
-// Legacy interface for migration
-interface LegacyCronJob {
-  id: string;
-  name?: string;
-  schedule: {
-    kind: "at" | "every" | "cron";
-    atMs?: number;
-    everyMs?: number;
-    expr?: string;
-    tz?: string;
-  };
-  payload: {
-    kind: "systemEvent" | "agentTurn";
-    text?: string;
-    message?: string;
-  };
-  sessionTarget: "main" | "isolated";
-  enabled: boolean;
-  lastRunAt?: number;
-  nextRunAt?: number;
-}
-
-let events = new Map<string, CalendarEvent>();
-let cronInstances = new Map<string, Cron>();
-
-// Migrate legacy cron job to calendar event
-function migrateLegacyJob(job: LegacyCronJob): CalendarEvent {
-  let recurrence: RecurrenceRule | undefined;
-  let startTime = Date.now();
-  let nextOccurrenceAt: number | undefined;
-
-  if (job.schedule.kind === "at") {
-    startTime = job.schedule.atMs || Date.now();
-    nextOccurrenceAt = job.nextRunAt || startTime;
-    recurrence = { type: "none" };
-  } else if (job.schedule.kind === "every") {
-    const everyMs = job.schedule.everyMs || 60000;
-    startTime = Date.now();
-    nextOccurrenceAt = Date.now() + everyMs;
-    recurrence = {
-      type: "cron",
-      cronExpression: `*/${Math.floor(everyMs / 1000)} * * * * *`,
-      timezone: job.schedule.tz,
-    };
-  } else if (job.schedule.kind === "cron") {
-    startTime = Date.now();
-    recurrence = {
-      type: "cron",
-      cronExpression: job.schedule.expr || "0 * * * *",
-      timezone: job.schedule.tz,
-    };
-  }
-
-  return {
-    id: job.id,
-    title: job.name || "Untitled Event",
-    startTime,
-    recurrence,
-    action: {
-      type: job.payload.kind === "agentTurn" ? "agentTurn" : "systemEvent",
-      message: job.payload.message,
-      text: job.payload.text,
-      sessionTarget: job.sessionTarget,
-    },
-    enabled: job.enabled,
-    createdAt: Date.now(),
-    lastTriggeredAt: job.lastRunAt,
-    nextOccurrenceAt: nextOccurrenceAt || job.nextRunAt,
-  };
-}
-
-// Calculate next occurrence for recurring events
-function calculateNextOccurrence(event: CalendarEvent): number | undefined {
-  if (!event.recurrence || event.recurrence.type === "none") {
-    return event.startTime > Date.now() ? event.startTime : undefined;
-  }
-
-  if (event.recurrence.type === "cron" && event.recurrence.cronExpression) {
-    try {
-      const cron = new Cron(event.recurrence.cronExpression, {
-        timezone: event.recurrence.timezone,
-      });
-      const next = cron.nextRun();
-      return next ? next.getTime() : undefined;
-    } catch {
-      return undefined;
-    }
-  }
-
-  // For daily/weekly/monthly/yearly, calculate based on interval
-  const now = Date.now();
-  const interval = event.recurrence.interval || 1;
-  let next = event.nextOccurrenceAt || event.startTime;
-
-  if (event.recurrence.type === "daily") {
-    const dayMs = 24 * 60 * 60 * 1000;
-    while (next <= now) {
-      next += dayMs * interval;
-    }
-  } else if (event.recurrence.type === "weekly") {
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    while (next <= now) {
-      next += weekMs * interval;
-    }
-  } else if (event.recurrence.type === "monthly") {
-    // Approximate month as 30 days
-    const monthMs = 30 * 24 * 60 * 60 * 1000;
-    while (next <= now) {
-      next += monthMs * interval;
-    }
-  } else if (event.recurrence.type === "yearly") {
-    const yearMs = 365 * 24 * 60 * 60 * 1000;
-    while (next <= now) {
-      next += yearMs * interval;
-    }
-  }
-
-  // Check end date and count limits
-  if (event.recurrence.endDate && next > event.recurrence.endDate) {
-    return undefined;
-  }
-
-  return next;
-}
-
-// Load events from disk
-function loadEvents(): void {
-  if (!existsSync(CALENDAR_DIR)) {
-    mkdirSync(CALENDAR_DIR, { recursive: true });
-  }
-
-  // Migrate old cron jobs if they exist
-  if (existsSync(OLD_JOBS_FILE) && !existsSync(EVENTS_FILE)) {
-    try {
-      const data = readFileSync(OLD_JOBS_FILE, "utf-8");
-      const jobsArray = JSON.parse(data) as LegacyCronJob[];
-      const migratedEvents = jobsArray.map(job => migrateLegacyJob(job));
-      events.clear();
-      for (const event of migratedEvents) {
-        events.set(event.id, event);
-      }
-      saveEvents();
-      console.log(`[Calendar] Migrated ${jobsArray.length} legacy cron jobs to calendar events`);
-    } catch (error) {
-      console.error("[Calendar] Failed to migrate legacy jobs:", error);
-    }
-  }
-
-  if (existsSync(EVENTS_FILE)) {
-    try {
-      const data = readFileSync(EVENTS_FILE, "utf-8");
-      const eventsArray = JSON.parse(data) as CalendarEvent[];
-      events.clear();
-      for (const event of eventsArray) {
-        events.set(event.id, event);
-      }
-      scheduleEvents();
-    } catch (error) {
-      console.error("[Calendar] Failed to load events:", error);
-    }
-  }
-}
-
-// Save events to disk
-function saveEvents(): void {
-  if (!existsSync(CALENDAR_DIR)) {
-    mkdirSync(CALENDAR_DIR, { recursive: true });
-  }
-
-  try {
-    const eventsArray = Array.from(events.values());
-    writeFileSync(EVENTS_FILE, JSON.stringify(eventsArray, null, 2), "utf-8");
-  } catch (error) {
-    console.error("[Calendar] Failed to save events:", error);
-  }
-}
-
-// Schedule an event
-function scheduleEvent(event: CalendarEvent): void {
-  // Stop existing cron if any
-  const existing = cronInstances.get(event.id);
-  if (existing) {
-    existing.stop();
-  }
-
-  if (!event.enabled) {
-    return;
-  }
-
-  const nextOccurrence = calculateNextOccurrence(event);
-  if (!nextOccurrence) {
-    return;
-  }
-
-  event.nextOccurrenceAt = nextOccurrence;
-
-  // For one-time events, use setTimeout
-  if (!event.recurrence || event.recurrence.type === "none") {
-    const delay = Math.max(0, nextOccurrence - Date.now());
-    setTimeout(() => {
-      executeEvent(event);
-    }, delay);
-    return;
-  }
-
-  // For recurring events, use Cron
-  if (event.recurrence.type === "cron" && event.recurrence.cronExpression) {
-    const cron = new Cron(event.recurrence.cronExpression, {
-      timezone: event.recurrence.timezone,
-    }, () => {
-      executeEvent(event);
-      // Update next occurrence
-      event.nextOccurrenceAt = calculateNextOccurrence(event);
-      saveEvents();
-    });
-    cronInstances.set(event.id, cron);
-  } else {
-    // For daily/weekly/monthly/yearly, calculate interval and use cron
-    const now = Date.now();
-    const delay = Math.max(0, nextOccurrence - now);
-    
-    setTimeout(() => {
-      executeEvent(event);
-      // Schedule next occurrence
-      event.nextOccurrenceAt = calculateNextOccurrence(event);
-      if (event.nextOccurrenceAt) {
-        scheduleEvent(event);
-      }
-      saveEvents();
-    }, delay);
-  }
-
-  saveEvents();
-}
-
-// Schedule all events
-function scheduleEvents(): void {
-  for (const event of events.values()) {
-    scheduleEvent(event);
-  }
-}
-
-// Execute an event
-async function executeEvent(event: CalendarEvent): Promise<void> {
-  console.log(`[Calendar] Executing event: ${event.id} - ${event.title}`);
-  event.lastTriggeredAt = Date.now();
-
-  // TODO: Actually execute the event action
-  // For now, just log it
-  if (event.action.type === "systemEvent") {
-    console.log(`[Calendar] System event: ${event.action.text}`);
-  } else if (event.action.type === "agentTurn") {
-    console.log(`[Calendar] Agent turn: ${event.action.message}`);
-  }
-
-  // Update next occurrence for recurring events
-  if (event.recurrence && event.recurrence.type !== "none") {
-    event.nextOccurrenceAt = calculateNextOccurrence(event);
-    if (event.nextOccurrenceAt) {
-      scheduleEvent(event);
-    }
-  }
-
-  saveEvents();
-}
-
-// Initialize on module load
-loadEvents();
+setEvents(eventsMap);
+scheduleEvents(eventsMap);
 
 export function createCronTool(): Tool {
   return {
     definition: {
       name: "cron",
-      description: "Manage calendar events and scheduled tasks. Create, list, update, remove, and trigger calendar events.",
+      description: "Manage calendar events and scheduled tasks. Create, list, update, remove, and trigger calendar events. To create an event, use action='create' with an 'event' object containing: startTime (timestamp in milliseconds, required), title (optional), action (object with type='agentTurn' or 'systemEvent', required), and recurrence (optional). Action object requires: actionMessage (string, required), and optionally: contextMessage (string), agentId (string, defaults to 'zuckerman'), sessionTarget ('main' or 'isolated', defaults to 'isolated'). Channel metadata should be set at session creation time, not in the action. Example: {action:'create', event:{startTime:Date.now(), title:'Reminder', action:{type:'agentTurn', actionMessage:'Send me a message on Telegram saying Hi', contextMessage:'Telegram reminder for user', sessionTarget:'isolated'}, recurrence:{type:'cron', cronExpression:'*/5 * * * *'}}}",
       parameters: {
         type: "object",
         properties: {
           action: {
             type: "string",
-            description: "Action: status, list, create, get, update, delete, trigger. For backward compatibility: add, remove, run (maps to create, delete, trigger)",
+            description: "Action: status, list, create, get, update, delete, trigger",
           },
           eventId: {
             type: "string",
-            description: "Event ID (for get, update, delete, trigger actions). Also accepts 'jobId' for backward compatibility",
-          },
-          jobId: {
-            type: "string",
-            description: "Legacy job ID (maps to eventId)",
+            description: "Event ID (for get, update, delete, trigger actions)",
           },
           event: {
             type: "object",
-            description: "Event object (for create action). Also accepts 'job' for backward compatibility",
-          },
-          job: {
-            type: "object",
-            description: "Legacy job object (maps to event)",
+            description: "Event object (for create action). REQUIRED: startTime (number, timestamp in milliseconds), action (object). Optional: title (string), endTime (number), recurrence (object), enabled (boolean). Action object: type ('agentTurn' or 'systemEvent'), actionMessage (string, required), contextMessage (string, optional), agentId (string, optional, defaults to 'zuckerman'), sessionTarget ('main' or 'isolated', optional, defaults to 'isolated'). Recurrence: {type:'none'|'daily'|'weekly'|'monthly'|'yearly'|'cron', cronExpression (for cron type, e.g., '*/5 * * * *' for every 5 minutes), interval, endDate, count, timezone}. Example: {startTime:Date.now(), title:'Reminder', action:{type:'agentTurn', actionMessage:'Send me a message on Telegram saying Hi', contextMessage:'Telegram reminder', sessionTarget:'isolated'}, recurrence:{type:'cron', cronExpression:'*/5 * * * *'}}",
           },
           patch: {
             type: "object",
@@ -359,12 +58,7 @@ export function createCronTool(): Tool {
     },
     handler: async (params, securityContext, executionContext) => {
       try {
-        let { action } = params;
-
-        // Backward compatibility: map old actions
-        if (action === "add") action = "create";
-        if (action === "remove") action = "delete";
-        if (action === "run") action = "trigger";
+        const { action } = params;
 
         if (typeof action !== "string") {
           return {
@@ -384,10 +78,8 @@ export function createCronTool(): Tool {
           }
         }
 
-        // Handle backward compatibility for jobId
-        const eventId = typeof params.eventId === "string" ? params.eventId : 
-                       typeof params.jobId === "string" ? params.jobId : 
-                       undefined;
+        const events = getEvents();
+        const eventId = typeof params.eventId === "string" ? params.eventId : undefined;
 
         switch (action) {
           case "status": {
@@ -452,7 +144,7 @@ export function createCronTool(): Tool {
           }
 
           case "create": {
-            const eventData = (params.event || params.job) as Partial<CalendarEvent>;
+            const eventData = params.event as Partial<CalendarEvent>;
             if (!eventData || !eventData.startTime || !eventData.action) {
               return {
                 success: false,
@@ -460,25 +152,49 @@ export function createCronTool(): Tool {
               };
             }
 
-            const eventId = eventData.id || `event-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            if (!eventData.action.actionMessage) {
+              return {
+                success: false,
+                error: "action object must include actionMessage",
+              };
+            }
+
+            const newEventId = eventData.id || `event-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+            
+            // Store the sessionId that created this event
+            const actionWithSessionId: EventAction = {
+              ...eventData.action,
+              sessionIdSource: executionContext?.sessionId,
+            };
+            
             const event: CalendarEvent = {
-              id: eventId,
+              id: newEventId,
               title: eventData.title || "Untitled Event",
               startTime: eventData.startTime,
               endTime: eventData.endTime,
               recurrence: eventData.recurrence || { type: "none" },
-              action: eventData.action,
+              action: actionWithSessionId,
               enabled: eventData.enabled !== false,
               createdAt: Date.now(),
             };
 
-            events.set(eventId, event);
-            scheduleEvent(event);
-            saveEvents();
+            events.set(newEventId, event);
+            scheduleEvent(event, events);
+            saveEvents(events);
+
+            // Record calendar event created
+            const agentId = event.action.agentId || "zuckerman";
+            await activityRecorder.recordCalendarEventCreated(
+              agentId,
+              newEventId,
+              event.title,
+            ).catch((err) => {
+              console.warn("Failed to record calendar event created:", err);
+            });
 
             return {
               success: true,
-              result: { eventId, event },
+              result: { eventId: newEventId, event },
             };
           }
 
@@ -530,8 +246,18 @@ export function createCronTool(): Tool {
 
             // Apply patch
             Object.assign(event, patch);
-            scheduleEvent(event);
-            saveEvents();
+            scheduleEvent(event, events);
+            saveEvents(events);
+
+            // Record calendar event updated
+            const agentId = event.action.agentId || "zuckerman";
+            await activityRecorder.recordCalendarEventUpdated(
+              agentId,
+              eventId,
+              event.title,
+            ).catch((err) => {
+              console.warn("Failed to record calendar event updated:", err);
+            });
 
             return {
               success: true,
@@ -556,14 +282,20 @@ export function createCronTool(): Tool {
             }
 
             // Stop cron instance
-            const cron = cronInstances.get(eventId);
-            if (cron) {
-              cron.stop();
-              cronInstances.delete(eventId);
-            }
+            stopCronInstance(eventId);
 
             events.delete(eventId);
-            saveEvents();
+            saveEvents(events);
+
+            // Record calendar event deleted
+            const agentId = event.action.agentId || "zuckerman";
+            await activityRecorder.recordCalendarEventDeleted(
+              agentId,
+              eventId,
+              event.title,
+            ).catch((err) => {
+              console.warn("Failed to record calendar event deleted:", err);
+            });
 
             return {
               success: true,
@@ -587,7 +319,7 @@ export function createCronTool(): Tool {
               };
             }
 
-            await executeEvent(event);
+            await executeEvent(event, events);
 
             return {
               success: true,
@@ -613,11 +345,11 @@ export function createCronTool(): Tool {
 
 // Export for CLI use
 export function getAllEvents(): CalendarEvent[] {
-  return Array.from(events.values());
+  return Array.from(getEvents().values());
 }
 
 export function getUpcomingEvents(limit?: number): CalendarEvent[] {
-  const upcoming = Array.from(events.values())
+  const upcoming = Array.from(getEvents().values())
     .filter(e => e.enabled && e.nextOccurrenceAt && e.nextOccurrenceAt > Date.now())
     .sort((a, b) => (a.nextOccurrenceAt || 0) - (b.nextOccurrenceAt || 0));
   

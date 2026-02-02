@@ -160,7 +160,7 @@ export function toAnthropicRequest(params: {
 
   return {
     model: params.model,
-    max_tokens: params.maxTokens ?? 4096,
+    max_tokens: params.maxTokens ?? 100000, // Default to 8192 (Claude 3.5 Sonnet max output) - no limit when undefined
     messages,
     ...(system.length > 0 ? { system } : {}),
     temperature: params.temperature,

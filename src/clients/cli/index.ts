@@ -22,6 +22,7 @@ import { createChannelsCommand } from "./commands/channels.js";
 import { createConfigCommand } from "./commands/config.js";
 import { createCalendarCommand } from "./commands/calendar.js";
 import { createResetCommand } from "./commands/reset.js";
+import { createActivitiesCommand } from "./commands/activities.js";
 
 const program = new Command();
 
@@ -39,6 +40,7 @@ program.addCommand(createChannelsCommand());
 program.addCommand(createConfigCommand());
 program.addCommand(createCalendarCommand());
 program.addCommand(createResetCommand());
+program.addCommand(createActivitiesCommand());
 
 // Utility command
 program

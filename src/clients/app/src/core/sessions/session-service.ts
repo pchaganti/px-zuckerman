@@ -18,6 +18,7 @@ export class SessionService {
       label: string;
       type: string;
       agentId?: string;
+      lastActivity?: number;
     }> };
 
     return (result.sessions || []).map((session) => ({
@@ -25,6 +26,7 @@ export class SessionService {
       label: session.label || session.id,
       type: (session.type || "main") as SessionType,
       agentId: session.agentId,
+      lastActivity: session.lastActivity,
     }));
   }
 

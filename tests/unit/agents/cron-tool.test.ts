@@ -5,8 +5,8 @@ import { readFileSync, existsSync, unlinkSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
-const CRON_DIR = join(homedir(), ".zuckerman", "cron");
-const JOBS_FILE = join(CRON_DIR, "jobs.json");
+const CALENDAR_DIR = join(homedir(), ".zuckerman", "calendar");
+const EVENTS_FILE = join(CALENDAR_DIR, "events.json");
 
 describe("Cron Tool", () => {
   let tool: ReturnType<typeof createCronTool>;
@@ -25,16 +25,16 @@ describe("Cron Tool", () => {
       },
     };
 
-    // Clean up test jobs file
-    if (existsSync(JOBS_FILE)) {
-      unlinkSync(JOBS_FILE);
+    // Clean up test events file
+    if (existsSync(EVENTS_FILE)) {
+      unlinkSync(EVENTS_FILE);
     }
   });
 
   afterEach(() => {
-    // Clean up test jobs file
-    if (existsSync(JOBS_FILE)) {
-      unlinkSync(JOBS_FILE);
+    // Clean up test events file
+    if (existsSync(EVENTS_FILE)) {
+      unlinkSync(EVENTS_FILE);
     }
     vi.clearAllMocks();
   });
@@ -42,8 +42,8 @@ describe("Cron Tool", () => {
   describe("Tool Definition", () => {
     it("should have correct name and description", () => {
       expect(tool.definition.name).toBe("cron");
-      expect(tool.definition.description).toContain("scheduled");
-      expect(tool.definition.description).toContain("cron jobs");
+      expect(tool.definition.description).toContain("calendar");
+      expect(tool.definition.description).toContain("events");
     });
 
     it("should have required action parameter", () => {
@@ -85,8 +85,9 @@ describe("Cron Tool", () => {
 
       expect(result.success).toBe(true);
       expect(result.result).toHaveProperty("enabled");
-      expect(result.result).toHaveProperty("jobsCount");
-      expect(result.result).toHaveProperty("activeJobs");
+      expect(result.result).toHaveProperty("eventsCount");
+      expect(result.result).toHaveProperty("activeEvents");
+      expect(result.result).toHaveProperty("upcomingEvents");
     });
   });
 
@@ -98,160 +99,178 @@ describe("Cron Tool", () => {
       );
 
       expect(result.success).toBe(true);
-      expect(result.result).toHaveProperty("jobs");
-      expect(Array.isArray(result.result.jobs)).toBe(true);
+      expect(result.result).toHaveProperty("events");
+      expect(Array.isArray(result.result.events)).toBe(true);
     });
 
-    it("should list added jobs", async () => {
-      // Add a job first
-      const addResult = await tool.handler(
+    it("should list created events", async () => {
+      // Create an event first
+      const createResult = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Test Job",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "Test Event",
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test event",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test event",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
       );
 
-      expect(addResult.success).toBe(true);
+      expect(createResult.success).toBe(true);
 
-      // List jobs
+      // List events
       const listResult = await tool.handler(
         { action: "list" },
         mockSecurityContext,
       );
 
       expect(listResult.success).toBe(true);
-      expect(listResult.result.jobs.length).toBeGreaterThan(0);
-      expect(listResult.result.jobs[0].name).toBe("Test Job");
+      expect(listResult.result.events.length).toBeGreaterThan(0);
+      expect(listResult.result.events[0].title).toBe("Test Event");
     });
   });
 
-  describe("Add Action", () => {
-    it("should require job object", async () => {
+  describe("Create Action", () => {
+    it("should require event object", async () => {
       const result = await tool.handler(
-        { action: "add" },
+        { action: "create" },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("job object");
+      expect(result.error).toContain("event object");
     });
 
-    it("should require schedule, payload, and sessionTarget", async () => {
+    it("should require startTime and action", async () => {
       const result = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Test",
+          action: "create",
+          event: {
+            title: "Test",
           },
         },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("schedule");
+      expect(result.error).toContain("startTime");
     });
 
-    it("should create job with 'at' schedule", async () => {
-      const atMs = Date.now() + 60000; // 1 minute from now
+    it("should require actionMessage in action", async () => {
       const result = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "One-shot Job",
-            schedule: {
-              kind: "at",
-              atMs,
+          action: "create",
+          event: {
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test",
+          },
+        },
+        mockSecurityContext,
+      );
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("actionMessage");
+    });
+
+    it("should create one-time event", async () => {
+      const startTime = Date.now() + 60000; // 1 minute from now
+      const result = await tool.handler(
+        {
+          action: "create",
+          event: {
+            title: "One-shot Event",
+            startTime,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test",
             },
-            sessionTarget: "main",
+            recurrence: {
+              type: "none",
+            },
           },
         },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(true);
-      expect(result.result).toHaveProperty("jobId");
-      expect(result.result.job.name).toBe("One-shot Job");
+      expect(result.result).toHaveProperty("eventId");
+      expect(result.result.event.title).toBe("One-shot Event");
     });
 
-    it("should create job with 'every' schedule", async () => {
+    it("should create recurring event with cron expression", async () => {
       const result = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Recurring Job",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "Recurring Event",
+            startTime: Date.now(),
+            action: {
+              type: "agentTurn",
+              actionMessage: "Do something",
+              sessionTarget: "isolated",
             },
-            payload: {
-              kind: "agentTurn",
-              message: "Do something",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "isolated",
           },
         },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(true);
-      expect(result.result.job.schedule.kind).toBe("every");
+      expect(result.result.event.recurrence?.type).toBe("cron");
+      expect(result.result.event.recurrence?.cronExpression).toBe("*/5 * * * *");
     });
 
-    it("should create job with 'cron' schedule", async () => {
+    it("should create event with daily recurrence", async () => {
       const result = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Cron Job",
-            schedule: {
-              kind: "cron",
-              expr: "0 * * * *",
+          action: "create",
+          event: {
+            title: "Daily Event",
+            startTime: Date.now(),
+            action: {
+              type: "systemEvent",
+              actionMessage: "Daily check",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Hourly check",
+            recurrence: {
+              type: "daily",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(true);
-      expect(result.result.job.schedule.kind).toBe("cron");
+      expect(result.result.event.recurrence?.type).toBe("daily");
     });
 
-    it("should persist jobs to disk", async () => {
+    it("should persist events to disk", async () => {
       const result = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Persistent Job",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "Persistent Event",
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
@@ -259,54 +278,54 @@ describe("Cron Tool", () => {
 
       expect(result.success).toBe(true);
 
-      // Check file exists and contains the job
-      expect(existsSync(JOBS_FILE)).toBe(true);
-      const data = JSON.parse(readFileSync(JOBS_FILE, "utf-8"));
-      expect(data.some((j: any) => j.name === "Persistent Job")).toBe(true);
+      // Check file exists and contains the event
+      expect(existsSync(EVENTS_FILE)).toBe(true);
+      const data = JSON.parse(readFileSync(EVENTS_FILE, "utf-8"));
+      expect(data.some((e: any) => e.title === "Persistent Event")).toBe(true);
     });
   });
 
   describe("Update Action", () => {
-    it("should require jobId and patch", async () => {
+    it("should require eventId and patch", async () => {
       const result = await tool.handler(
         { action: "update" },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("jobId and patch");
+      expect(result.error).toContain("eventId");
     });
 
-    it("should update existing job", async () => {
-      // Add a job first
-      const addResult = await tool.handler(
+    it("should update existing event", async () => {
+      // Create an event first
+      const createResult = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Original Name",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "Original Name",
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
       );
 
-      const jobId = addResult.result.jobId;
+      const eventId = createResult.result.eventId;
 
-      // Update the job
+      // Update the event
       const updateResult = await tool.handler(
         {
           action: "update",
-          jobId,
+          eventId,
           patch: {
-            name: "Updated Name",
+            title: "Updated Name",
             enabled: false,
           },
         },
@@ -314,16 +333,16 @@ describe("Cron Tool", () => {
       );
 
       expect(updateResult.success).toBe(true);
-      expect(updateResult.result.job.name).toBe("Updated Name");
-      expect(updateResult.result.job.enabled).toBe(false);
+      expect(updateResult.result.event.title).toBe("Updated Name");
+      expect(updateResult.result.event.enabled).toBe(false);
     });
 
-    it("should reject update for non-existent job", async () => {
+    it("should reject update for non-existent event", async () => {
       const result = await tool.handler(
         {
           action: "update",
-          jobId: "non-existent",
-          patch: { name: "Test" },
+          eventId: "non-existent",
+          patch: { title: "Test" },
         },
         mockSecurityContext,
       );
@@ -333,99 +352,99 @@ describe("Cron Tool", () => {
     });
   });
 
-  describe("Remove Action", () => {
-    it("should require jobId", async () => {
+  describe("Delete Action", () => {
+    it("should require eventId", async () => {
       const result = await tool.handler(
-        { action: "remove" },
+        { action: "delete" },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("jobId is required");
+      expect(result.error).toContain("eventId is required");
     });
 
-    it("should remove existing job", async () => {
-      // Add a job first
-      const addResult = await tool.handler(
+    it("should delete existing event", async () => {
+      // Create an event first
+      const createResult = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "To Remove",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "To Remove",
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
       );
 
-      const jobId = addResult.result.jobId;
+      const eventId = createResult.result.eventId;
 
-      // Remove the job
-      const removeResult = await tool.handler(
-        { action: "remove", jobId },
+      // Delete the event
+      const deleteResult = await tool.handler(
+        { action: "delete", eventId },
         mockSecurityContext,
       );
 
-      expect(removeResult.success).toBe(true);
+      expect(deleteResult.success).toBe(true);
 
       // Verify it's gone
       const listResult = await tool.handler(
         { action: "list" },
         mockSecurityContext,
       );
-      expect(listResult.result.jobs.find((j: any) => j.id === jobId)).toBeUndefined();
+      expect(listResult.result.events.find((e: any) => e.id === eventId)).toBeUndefined();
     });
   });
 
-  describe("Run Action", () => {
-    it("should require jobId", async () => {
+  describe("Trigger Action", () => {
+    it("should require eventId", async () => {
       const result = await tool.handler(
-        { action: "run" },
+        { action: "trigger" },
         mockSecurityContext,
       );
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("jobId is required");
+      expect(result.error).toContain("eventId is required");
     });
 
-    it("should execute existing job", async () => {
-      // Add a job first
-      const addResult = await tool.handler(
+    it("should trigger existing event", async () => {
+      // Create an event first
+      const createResult = await tool.handler(
         {
-          action: "add",
-          job: {
-            name: "Test Run",
-            schedule: {
-              kind: "every",
-              everyMs: 60000,
+          action: "create",
+          event: {
+            title: "Test Trigger",
+            startTime: Date.now() + 60000,
+            action: {
+              type: "systemEvent",
+              actionMessage: "Test execution",
             },
-            payload: {
-              kind: "systemEvent",
-              text: "Test execution",
+            recurrence: {
+              type: "cron",
+              cronExpression: "*/5 * * * *",
             },
-            sessionTarget: "main",
           },
         },
         mockSecurityContext,
       );
 
-      const jobId = addResult.result.jobId;
+      const eventId = createResult.result.eventId;
 
-      // Run the job
-      const runResult = await tool.handler(
-        { action: "run", jobId },
+      // Trigger the event
+      const triggerResult = await tool.handler(
+        { action: "trigger", eventId },
         mockSecurityContext,
       );
 
-      expect(runResult.success).toBe(true);
-      expect(runResult.result.executed).toBe(true);
+      expect(triggerResult.success).toBe(true);
+      expect(triggerResult.result.triggered).toBe(true);
     });
   });
 });

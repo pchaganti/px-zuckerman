@@ -207,13 +207,17 @@ export function Sidebar({ state, activeSessionIds, onAction }: SidebarProps) {
     );
   }, [state.sessions, searchQuery]);
 
-  // Group sessions into Active and Archived
+  // Group sessions into Active and Archived, sorted by lastActivity (most recent first)
   const activeSessions = useMemo(() => {
-    return filteredSessions.filter((s) => activeSessionIds.has(s.id));
+    return filteredSessions
+      .filter((s) => activeSessionIds.has(s.id))
+      .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
   }, [filteredSessions, activeSessionIds]);
 
   const archivedSessions = useMemo(() => {
-    return filteredSessions.filter((s) => !activeSessionIds.has(s.id));
+    return filteredSessions
+      .filter((s) => !activeSessionIds.has(s.id))
+      .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
   }, [filteredSessions, activeSessionIds]);
 
   // Count sessions per agent

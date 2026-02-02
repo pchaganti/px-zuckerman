@@ -19,12 +19,22 @@ import {
   Palette,
   Clock,
   Cpu,
-  Sparkles
+  Sparkles,
+  Activity,
+  Calendar,
+  Filter,
+  CheckCircle2,
+  XCircle,
+  Circle,
+  Send,
+  Inbox,
+  Zap,
+  Code
 } from "lucide-react";
 import { GatewayClient } from "../../../core/gateway/client";
 import type { UseAppReturn } from "../../../hooks/use-app";
 
-type AgentTab = "overview" | "prompts" | "tools" | "sessions";
+type AgentTab = "overview" | "prompts" | "tools" | "sessions" | "activities";
 
 interface AgentPrompts {
   agentId?: string;
@@ -61,18 +71,34 @@ interface AgentViewProps {
   onClose: () => void;
 }
 
+interface ActivityItem {
+  id: string;
+  type: string;
+  timestamp: number;
+  agentId?: string;
+  sessionId?: string;
+  runId?: string;
+  metadata: Record<string, unknown>;
+}
+
 export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewProps) {
   const [activeTab, setActiveTab] = useState<AgentTab>("overview");
   const [prompts, setPrompts] = useState<AgentPrompts | null>(null);
   const [loadingPrompts, setLoadingPrompts] = useState(false);
   const [promptsError, setPromptsError] = useState<string | null>(null);
   const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const [activities, setActivities] = useState<ActivityItem[]>([]);
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+  const [activityDateFilter, setActivityDateFilter] = useState<string>("today");
+  const [activityTypeFilter, setActivityTypeFilter] = useState<string>("");
 
   const tabs = [
     { id: "overview" as AgentTab, label: "Overview", icon: <Info className="h-4 w-4" /> },
     { id: "prompts" as AgentTab, label: "Prompts", icon: <FileText className="h-4 w-4" /> },
     { id: "tools" as AgentTab, label: "Tools", icon: <Wrench className="h-4 w-4" /> },
     { id: "sessions" as AgentTab, label: "Sessions", icon: <MessageSquare className="h-4 w-4" /> },
+    { id: "activities" as AgentTab, label: "Activities", icon: <Activity className="h-4 w-4" /> },
   ];
 
   // Load agent prompts when prompts tab is active
@@ -82,6 +108,13 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
       loadPrompts();
     }
   }, [activeTab, gatewayClient, agentId]);
+
+  // Load activities when activities tab is active
+  useEffect(() => {
+    if (activeTab === "activities" && gatewayClient?.isConnected() && !loadingActivities) {
+      loadActivities();
+    }
+  }, [activeTab, gatewayClient, agentId, activityDateFilter, activityTypeFilter]);
 
   const loadPrompts = async () => {
     if (!gatewayClient?.isConnected()) {
@@ -126,10 +159,241 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     }
   };
 
-  // Filter sessions for this agent
+  const loadActivities = async () => {
+    if (!gatewayClient?.isConnected()) {
+      setActivitiesError("Not connected to gateway");
+      return;
+    }
+
+    setLoadingActivities(true);
+    setActivitiesError(null);
+
+    try {
+      // Parse date filter - convert relative periods to timestamps
+      let from: number | undefined;
+      const to = Date.now();
+      
+      switch (activityDateFilter) {
+        case "today":
+          const todayStart = new Date();
+          todayStart.setHours(0, 0, 0, 0);
+          from = todayStart.getTime();
+          break;
+        case "last7":
+          from = to - 7 * 24 * 60 * 60 * 1000;
+          break;
+        case "last30":
+          from = to - 30 * 24 * 60 * 60 * 1000;
+          break;
+        case "last90":
+          from = to - 90 * 24 * 60 * 60 * 1000;
+          break;
+        default:
+          // Default to today
+          const defaultTodayStart = new Date();
+          defaultTodayStart.setHours(0, 0, 0, 0);
+          from = defaultTodayStart.getTime();
+      }
+
+      const params: Record<string, unknown> = {
+        agentId,
+        from,
+        to,
+        limit: 100,
+      };
+
+      if (activityTypeFilter) {
+        params.type = activityTypeFilter;
+      }
+
+      const response = await gatewayClient.request("activities.list", params);
+      if (response.ok && response.result) {
+        const result = response.result as { activities: ActivityItem[]; count: number };
+        setActivities(result.activities || []);
+        setActivitiesError(null);
+      } else {
+        setActivitiesError(response.error?.message || "Failed to load activities");
+        console.error("[AgentView] Failed to load activities:", response.error);
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to load activities";
+      setActivitiesError(errorMessage);
+      console.error("[AgentView] Error loading activities:", error);
+    } finally {
+      setLoadingActivities(false);
+    }
+  };
+
+  const formatActivityType = (type: string): string => {
+    const typeMap: Record<string, string> = {
+      "agent.run": "Started agent run",
+      "agent.run.complete": "Completed agent run",
+      "agent.run.error": "Agent run failed",
+      "tool.call": "Called tool",
+      "tool.result": "Tool completed",
+      "session.create": "Created session",
+      "session.update": "Updated session",
+      "channel.message.incoming": "Received message",
+      "channel.message.outgoing": "Sent message",
+      "calendar.event.triggered": "Triggered calendar event",
+      "calendar.event.created": "Created calendar event",
+      "calendar.event.updated": "Updated calendar event",
+      "calendar.event.deleted": "Deleted calendar event",
+    };
+    return typeMap[type] || type.split(".").map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+  };
+
+  const getActivityIcon = (type: string) => {
+    if (type === "agent.run") return <Play className="h-4 w-4" />;
+    if (type === "agent.run.complete") return <CheckCircle2 className="h-4 w-4" />;
+    if (type === "agent.run.error") return <XCircle className="h-4 w-4" />;
+    if (type.startsWith("tool.call")) return <Terminal className="h-4 w-4" />;
+    if (type.startsWith("tool.result")) return <CheckCircle2 className="h-4 w-4" />;
+    if (type === "session.create") return <Circle className="h-4 w-4" />;
+    if (type === "session.update") return <Circle className="h-4 w-4" />;
+    if (type === "channel.message.incoming") return <Inbox className="h-4 w-4" />;
+    if (type === "channel.message.outgoing") return <Send className="h-4 w-4" />;
+    if (type.startsWith("calendar.")) return <Calendar className="h-4 w-4" />;
+    return <Activity className="h-4 w-4" />;
+  };
+
+  const getActivityColor = (type: string): string => {
+    if (type === "agent.run.complete") return "text-green-600 dark:text-green-400";
+    if (type === "agent.run.error") return "text-red-600 dark:text-red-400";
+    if (type === "agent.run") return "text-blue-600 dark:text-blue-400";
+    if (type.startsWith("tool.")) return "text-purple-600 dark:text-purple-400";
+    if (type.startsWith("session.")) return "text-orange-600 dark:text-orange-400";
+    if (type.startsWith("channel.")) return "text-cyan-600 dark:text-cyan-400";
+    if (type.startsWith("calendar.")) return "text-pink-600 dark:text-pink-400";
+    return "text-muted-foreground";
+  };
+
+  const getActivityBgColor = (type: string): string => {
+    if (type === "agent.run.complete") return "bg-green-100 dark:bg-green-900/20";
+    if (type === "agent.run.error") return "bg-red-100 dark:bg-red-900/20";
+    if (type === "agent.run") return "bg-blue-100 dark:bg-blue-900/20";
+    if (type.startsWith("tool.")) return "bg-purple-100 dark:bg-purple-900/20";
+    if (type.startsWith("session.")) return "bg-orange-100 dark:bg-orange-900/20";
+    if (type.startsWith("channel.")) return "bg-cyan-100 dark:bg-cyan-900/20";
+    if (type.startsWith("calendar.")) return "bg-pink-100 dark:bg-pink-900/20";
+    return "bg-muted";
+  };
+
+  const formatRelativeTime = (timestamp: number): string => {
+    const now = Date.now();
+    const diff = now - timestamp;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (days > 0) return `${days} day${days > 1 ? "s" : ""} ago`;
+    if (hours > 0) return `${hours} hour${hours > 1 ? "s" : ""} ago`;
+    if (minutes > 0) return `${minutes} minute${minutes > 1 ? "s" : ""} ago`;
+    return "just now";
+  };
+
+  const formatTime = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const activityDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+    if (activityDate.getTime() === today.getTime()) {
+      return `Today at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    } else if (activityDate.getTime() === yesterday.getTime()) {
+      return `Yesterday at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    } else {
+      return date.toLocaleDateString([], { month: "short", day: "numeric", year: date.getFullYear() !== now.getFullYear() ? "numeric" : undefined }) + 
+        ` at ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+    }
+  };
+
+  const groupActivitiesByRelativePeriod = (activities: ActivityItem[]): Record<string, ActivityItem[]> => {
+    const groups: Record<string, ActivityItem[]> = {};
+    const now = Date.now();
+    
+    activities.forEach((activity) => {
+      const timestamp = activity.timestamp;
+      const diff = now - timestamp;
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const days = Math.floor(hours / 24);
+      
+      let periodKey: string;
+      if (hours < 1) {
+        periodKey = "Last hour";
+      } else if (hours < 24) {
+        periodKey = "Last day";
+      } else if (days < 7) {
+        periodKey = "Last 7 days";
+      } else if (days < 30) {
+        periodKey = "Last 30 days";
+      } else {
+        periodKey = "Older";
+      }
+      
+      if (!groups[periodKey]) {
+        groups[periodKey] = [];
+      }
+      groups[periodKey].push(activity);
+    });
+    
+    // Sort groups in a logical order
+    const orderedGroups: Record<string, ActivityItem[]> = {};
+    const order = ["Last hour", "Last day", "Last 7 days", "Last 30 days", "Older"];
+    order.forEach(key => {
+      if (groups[key]) {
+        orderedGroups[key] = groups[key];
+      }
+    });
+    
+    return orderedGroups;
+  };
+
+  const getActivityDescription = (activity: ActivityItem): string => {
+    const { type, metadata } = activity;
+    
+    if (type === "agent.run" && metadata.message) {
+      return `"${String(metadata.message).substring(0, 100)}${String(metadata.message).length > 100 ? "..." : ""}"`;
+    }
+    if (type === "agent.run.complete" && metadata.response) {
+      return `Response: "${String(metadata.response).substring(0, 100)}${String(metadata.response).length > 100 ? "..." : ""}"`;
+    }
+    if (type === "agent.run.error" && metadata.error) {
+      return String(metadata.error);
+    }
+    if (type === "tool.call" && metadata.toolName) {
+      return `Tool: ${String(metadata.toolName)}`;
+    }
+    if (type === "tool.result" && metadata.toolName) {
+      return `Tool: ${String(metadata.toolName)} completed`;
+    }
+    if (type === "session.create" && metadata.sessionLabel) {
+      return `Session: ${String(metadata.sessionLabel)}`;
+    }
+    if (type === "channel.message.incoming" && metadata.channel && metadata.from) {
+      return `From ${String(metadata.from)} via ${String(metadata.channel)}`;
+    }
+    if (type === "channel.message.outgoing" && metadata.channel && metadata.to) {
+      return `To ${String(metadata.to)} via ${String(metadata.channel)}`;
+    }
+    if (type.startsWith("calendar.") && metadata.eventTitle) {
+      return `Event: ${String(metadata.eventTitle)}`;
+    }
+    
+    return "";
+  };
+
+  // Filter sessions for this agent, sorted by lastActivity (most recent first)
   const agentSessions = state.sessions.filter((s) => s.agentId === agentId);
-  const activeAgentSessions = agentSessions.filter((s) => state.activeSessionIds.has(s.id));
-  const archivedAgentSessions = agentSessions.filter((s) => !state.activeSessionIds.has(s.id));
+  const activeAgentSessions = agentSessions
+    .filter((s) => state.activeSessionIds.has(s.id))
+    .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
+  const archivedAgentSessions = agentSessions
+    .filter((s) => !state.activeSessionIds.has(s.id))
+    .sort((a, b) => (b.lastActivity || 0) - (a.lastActivity || 0));
 
   // Common tools list (based on project structure)
   const commonTools = ["terminal", "browser", "canvas", "cron", "device", "tts"];
@@ -141,10 +405,6 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
     onClose();
   };
 
-  const handleEditConfig = () => {
-    // TODO: Open agent config file in editor
-    alert("Edit config feature coming soon");
-  };
 
   return (
     <div className="flex-1 overflow-y-auto bg-background" style={{ minHeight: 0 }}>
@@ -183,39 +443,18 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
               ))}
             </div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <Bot className="h-5 w-5 text-muted-foreground" />
-                  <h1 className="text-2xl font-semibold text-foreground">{agentId}</h1>
-                </div>
-                <p className="text-sm text-muted-foreground">
-                  {activeTab === "overview" && "Agent overview and quick actions"}
-                  {activeTab === "prompts" && "System prompts, behavior, and personality"}
-                  {activeTab === "tools" && "Available tools and capabilities"}
-                  {activeTab === "sessions" && "Active and archived sessions"}
-                </p>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <Bot className="h-5 w-5 text-muted-foreground" />
+                <h1 className="text-2xl font-semibold text-foreground">{agentId}</h1>
               </div>
-
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleEditConfig}
-                  className="h-8"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Config
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleRunAgent}
-                  className="h-8"
-                >
-                  <Play className="h-4 w-4 mr-2" />
-                  Run Agent
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">
+                {activeTab === "overview" && "Agent overview and quick actions"}
+                {activeTab === "prompts" && "System prompts, behavior, and personality"}
+                {activeTab === "tools" && "Available tools and capabilities"}
+                {activeTab === "sessions" && "Active and archived sessions"}
+                {activeTab === "activities" && "Agent activity logs and history"}
+              </p>
             </div>
           </div>
 
@@ -498,6 +737,172 @@ export function AgentView({ agentId, state, gatewayClient, onClose }: AgentViewP
                 {agentSessions.length === 0 && (
                   <div className="text-center py-12 text-muted-foreground">
                     No sessions for this agent yet
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "activities" && (
+              <div className="space-y-6">
+                {/* Filters - GitHub style */}
+                <div className="flex items-center gap-3 pb-4 border-b border-border">
+                  <select
+                    value={activityDateFilter}
+                    onChange={(e) => setActivityDateFilter(e.target.value)}
+                    className="px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="today">Today</option>
+                    <option value="last7">Last 7 days</option>
+                    <option value="last30">Last 30 days</option>
+                    <option value="last90">Last 90 days</option>
+                  </select>
+                  <select
+                    value={activityTypeFilter}
+                    onChange={(e) => setActivityTypeFilter(e.target.value)}
+                    className="px-3 py-1.5 text-sm border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">All activity</option>
+                    <option value="agent.run">Agent runs</option>
+                    <option value="tool.call">Tool calls</option>
+                    <option value="session.create">Sessions</option>
+                    <option value="channel.message.incoming">Messages</option>
+                    <option value="calendar.event.triggered">Calendar events</option>
+                  </select>
+                  <Button
+                    onClick={loadActivities}
+                    disabled={loadingActivities}
+                    size="sm"
+                    variant="outline"
+                  >
+                    {loadingActivities ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Refresh"
+                    )}
+                  </Button>
+                </div>
+
+                {/* Activities Feed - GitHub style */}
+                {loadingActivities ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : activitiesError ? (
+                  <div className="border border-destructive/50 rounded-md bg-destructive/10 px-6 py-4">
+                    <p className="text-sm text-destructive">{activitiesError}</p>
+                  </div>
+                ) : activities.length > 0 ? (
+                  <div className="relative">
+                    {/* Timeline line */}
+                    <div className="absolute left-6 top-0 bottom-0 w-0.5 bg-border" />
+                    
+                    <div className="space-y-6">
+                      {Object.entries(groupActivitiesByRelativePeriod(activities)).map(([period, periodActivities]) => (
+                        <div key={period} className="relative">
+                          {/* Period header */}
+                          <div className="sticky top-0 z-10 py-3 mb-4 bg-background border-b border-border">
+                            <h3 className="text-sm font-semibold text-foreground">{period}</h3>
+                          </div>
+                          
+                          {/* Activities for this period */}
+                          <div className="space-y-4 pl-14">
+                            {periodActivities.map((activity, idx) => {
+                              const description = getActivityDescription(activity);
+                              const isLast = idx === periodActivities.length - 1;
+                              
+                              return (
+                                <div key={activity.id} className="relative group">
+                                  {/* Timeline dot */}
+                                  <div className={`absolute -left-8 top-1.5 w-3 h-3 rounded-full border-2 border-background ${getActivityBgColor(activity.type)} flex items-center justify-center`}>
+                                    <div className={`w-1.5 h-1.5 rounded-full ${getActivityColor(activity.type)}`} />
+                                  </div>
+                                  
+                                  {/* Activity card */}
+                                  <div className="relative bg-card border border-border rounded-lg p-4 hover:border-border/80 transition-all hover:shadow-sm">
+                                    <div className="flex items-start gap-3">
+                                      {/* Icon */}
+                                      <div className={`mt-0.5 p-1.5 rounded-md ${getActivityBgColor(activity.type)} ${getActivityColor(activity.type)}`}>
+                                        {getActivityIcon(activity.type)}
+                                      </div>
+                                      
+                                      {/* Content */}
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-start justify-between gap-4 mb-1">
+                                          <div className="flex-1">
+                                            <span className="text-sm font-medium text-foreground">
+                                              {formatActivityType(activity.type)}
+                                            </span>
+                                            {description && (
+                                              <p className="text-sm text-muted-foreground mt-1">
+                                                {description}
+                                              </p>
+                                            )}
+                                          </div>
+                                          <time className="text-xs text-muted-foreground whitespace-nowrap" title={formatTime(activity.timestamp)}>
+                                            {formatRelativeTime(activity.timestamp)}
+                                          </time>
+                                        </div>
+                                        
+                                        {/* Metadata badges */}
+                                        <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                          {activity.sessionId && (
+                                            <Badge variant="outline" className="text-xs font-mono">
+                                              {activity.sessionId.substring(0, 8)}
+                                            </Badge>
+                                          )}
+                                          {activity.runId && (
+                                            <Badge variant="outline" className="text-xs font-mono">
+                                              run:{activity.runId.substring(0, 8)}
+                                            </Badge>
+                                          )}
+                                          {typeof activity.metadata?.tokensUsed === "number" && (
+                                            <Badge variant="secondary" className="text-xs">
+                                              {activity.metadata.tokensUsed as number} tokens
+                                            </Badge>
+                                          )}
+                                          {Array.isArray(activity.metadata?.toolsUsed) && (activity.metadata.toolsUsed as unknown[]).length > 0 && (
+                                            <Badge variant="secondary" className="text-xs">
+                                              {(activity.metadata.toolsUsed as unknown[]).length} tool{(activity.metadata.toolsUsed as unknown[]).length > 1 ? "s" : ""}
+                                            </Badge>
+                                          )}
+                                        </div>
+                                        
+                                        {/* Expandable details */}
+                                        {activity.metadata && Object.keys(activity.metadata).length > 0 && (
+                                          <details className="mt-3">
+                                            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                                              View details
+                                            </summary>
+                                            <div className="mt-2 p-3 bg-muted/50 rounded-md border border-border">
+                                              <pre className="text-xs font-mono text-foreground overflow-x-auto">
+                                                {JSON.stringify(activity.metadata, null, 2)}
+                                              </pre>
+                                            </div>
+                                          </details>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  
+                                  {/* Timeline connector */}
+                                  {!isLast && (
+                                    <div className="absolute -left-8 top-8 bottom-0 w-0.5 bg-border" />
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-16">
+                    <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-50" />
+                    <p className="text-sm font-medium text-foreground mb-1">No activity</p>
+                    <p className="text-xs text-muted-foreground">
+                      Activity will appear here as the agent runs
+                    </p>
                   </div>
                 )}
               </div>
