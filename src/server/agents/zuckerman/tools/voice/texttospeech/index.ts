@@ -8,9 +8,9 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { existsSync } from "node:fs";
-import { openaiTextToSpeech, type OpenAITextToSpeechOptions } from "./providers/openai.js";
-import { elevenlabsTextToSpeech, type ElevenLabsTextToSpeechOptions } from "./providers/elevenlabs.js";
-import { edgeTextToSpeech, type EdgeTextToSpeechOptions } from "./providers/edge.js";
+import { openaiTextToSpeech, type OpenAITextToSpeechOptions } from "@server/world/providers/tts/openai.js";
+import { elevenlabsTextToSpeech, type ElevenLabsTextToSpeechOptions } from "@server/world/providers/tts/elevenlabs.js";
+import { edgeTextToSpeech, type EdgeTextToSpeechOptions } from "@server/world/providers/tts/edge.js";
 import type { TextToSpeechConfig } from "@server/world/config/types.js";
 
 export type TextToSpeechProvider = "openai" | "elevenlabs" | "edge";

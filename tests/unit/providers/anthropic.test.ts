@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { AnthropicProvider } from "@agents/zuckerman/core/awareness/providers/anthropic.js";
+import { AnthropicProvider } from "@server/world/providers/llm/anthropic.js";
 
 describe("AnthropicProvider", () => {
   it("should require API key", () => {

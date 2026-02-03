@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
-import type { LLMMessage, LLMTool, LLMModel } from "@server/agents/zuckerman/core/awareness/providers/types.js";
+import type { LLMMessage, LLMTool, LLMModel } from "@server/world/providers/llm/types.js";
 import type { ConversationId } from "@server/agents/zuckerman/conversations/types.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
 import type { ToolExecutionContext } from "@server/agents/zuckerman/tools/terminal/index.js";
 import { truncateOutput } from "@server/agents/zuckerman/tools/truncation.js";
-import { LLMProviderService } from "@server/agents/zuckerman/core/awareness/providers/service/selector.js";
-import { selectModel } from "@server/agents/zuckerman/core/awareness/providers/service/model-selector.js";
+import { LLMProviderService } from "@server/world/providers/llm/service/selector.js";
+import { selectModel } from "@server/world/providers/llm/service/model-selector.js";
 import { PromptLoader, type LoadedPrompts } from "../personality/personality-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import {

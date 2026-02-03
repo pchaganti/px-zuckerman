@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { OpenAIProvider } from "@agents/zuckerman/core/awareness/providers/openai.js";
+import { OpenAIProvider } from "@server/world/providers/llm/openai.js";
 
 describe("OpenAIProvider", () => {
   it("should require API key", () => {

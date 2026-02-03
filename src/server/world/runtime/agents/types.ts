@@ -22,7 +22,7 @@ export interface StreamEvent {
 
 export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
-import type { LLMModel } from "@server/agents/zuckerman/core/awareness/providers/types.js";
+import type { LLMModel } from "@server/world/providers/llm/types.js";
 
 export interface AgentRunParams {
   conversationId: ConversationId;
