@@ -15,25 +15,22 @@ export * from "./stores/emotional/index.js";
 export * from "./manager.js"; // Unified Memory Manager
 
 // Memory Extraction (Real-time)
-export * from "./services/extraction/index.js";
+export * from "./memory-classifier.js";
 
 // Services: Encoding, Storage, Retrieval
-export * from "./services/encoding/schema.js"; // Database schema
-export * from "./services/encoding/chunking.js"; // Text chunking
-export * from "./services/encoding/embeddings.js"; // Embedding utilities
-export * from "./services/storage/persistence.js"; // Daily/long-term persistence
-export * from "./services/storage/files.js"; // File operations
-export * from "./services/retrieval/search.js"; // Search interface
+export * from "./retrieval/encoding/schema.js"; // Database schema
+export * from "./retrieval/encoding/chunking.js"; // Text chunking
+export * from "./retrieval/encoding/embeddings.js"; // Embedding utilities
+export * from "./retrieval/search.js"; // Search interface
 
 // Note: Processing/consolidation logic moved to sleep module
 // Note: Memory flush logic moved to sleep module
 
 // Type exports
-export type { MemorySearchManager, MemorySearchResult } from "./services/retrieval/search.js";
-export type { MemoryFileEntry } from "./services/storage/files.js";
-export type { MemoryChunk } from "./services/encoding/chunking.js";
+export type { MemorySearchManager, MemorySearchResult } from "./retrieval/search.js";
+export type { MemoryChunk } from "./retrieval/encoding/chunking.js";
 export type { ResolvedMemorySearchConfig, MemorySearchConfig } from "./config.js";
 
 // Function exports (matching OpenClaw pattern)
-export { getMemorySearchManager } from "./services/retrieval/search.js";
+export { getMemorySearchManager } from "./retrieval/search.js";
 export { UnifiedMemoryManager } from "./manager.js";

@@ -1,6 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import type { ZuckermanConfig } from "./types.js";
 
@@ -55,9 +55,6 @@ export async function loadConfig(): Promise<ZuckermanConfig> {
 }
 
 export async function saveConfig(config: ZuckermanConfig): Promise<void> {
-  const { mkdir } = await import("node:fs/promises");
-  const { dirname } = await import("node:path");
-  
   await mkdir(dirname(CONFIG_PATH), { recursive: true });
   const content = JSON.stringify(config, null, 2);
   await writeFile(CONFIG_PATH, content, "utf-8");

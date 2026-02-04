@@ -147,8 +147,7 @@ export class SnapshotManager {
     for (const snapshot of snapshots) {
       if (snapshot.timestamp < cutoffTime) {
         try {
-          const fs = await import("node:fs/promises");
-          await fs.unlink(snapshot.path);
+          await unlink(snapshot.path);
           cleaned++;
         } catch (error) {
           console.warn(`Failed to clean up ${snapshot.path}:`, error);

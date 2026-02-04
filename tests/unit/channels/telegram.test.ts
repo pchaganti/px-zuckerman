@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { TelegramChannel } from "@server/world/communication/messengers/channels/telegram.js";
 import type { TelegramConfig } from "@server/world/config/types.js";
 import type { ChannelMessage } from "@server/world/communication/messengers/channels/types.js";
+import { Bot } from "grammy";
 
 // Mock grammy
 vi.mock("grammy", () => {
@@ -79,7 +80,6 @@ describe("TelegramChannel", () => {
     });
 
     it("should handle 409 conflict error", async () => {
-      const { Bot } = await import("grammy");
       const mockBot = new Bot("token");
       
       // Mock getMe to throw 409 error

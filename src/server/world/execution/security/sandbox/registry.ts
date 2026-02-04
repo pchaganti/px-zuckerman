@@ -1,6 +1,6 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import type { SandboxContext } from "../types.js";
 
 const REGISTRY_PATH = join(process.cwd(), ".zuckerman", "sandbox-registry.json");
@@ -47,9 +47,6 @@ export async function loadRegistry(): Promise<SandboxRegistry> {
  */
 export async function saveRegistry(registry: SandboxRegistry): Promise<void> {
   registryCache = registry;
-  const { mkdir } = await import("node:fs/promises");
-  const { dirname } = await import("node:path");
-  
   await mkdir(dirname(REGISTRY_PATH), { recursive: true });
   await writeFile(REGISTRY_PATH, JSON.stringify(registry, null, 2), "utf-8");
 }

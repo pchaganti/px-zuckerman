@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { DiscordChannel } from "@server/world/communication/messengers/channels/discord.js";
 import type { DiscordConfig } from "@server/world/config/types.js";
+import { TextChannel } from "discord.js";
 
 // Mock discord.js
 vi.mock("discord.js", () => {
@@ -182,7 +183,7 @@ describe("DiscordChannel", () => {
         send: vi.fn().mockResolvedValue({ id: "123" }),
       };
       // Make it an instance of TextChannel (using instanceof check)
-      Object.setPrototypeOf(mockChannel, (await import("discord.js")).TextChannel.prototype);
+      Object.setPrototypeOf(mockChannel, TextChannel.prototype);
       
       (channel as any).client = {
         channels: {

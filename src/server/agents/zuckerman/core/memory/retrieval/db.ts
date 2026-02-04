@@ -5,8 +5,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ResolvedMemorySearchConfig } from "../../config.js";
-import { ensureMemoryIndexSchema } from "../encoding/schema.js";
+import type { ResolvedMemorySearchConfig } from "../config.js";
+import { ensureMemoryIndexSchema } from "./encoding/schema.js";
 
 export type InitializeDatabaseResult = {
   db: DatabaseSync;

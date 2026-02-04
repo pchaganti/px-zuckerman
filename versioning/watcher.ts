@@ -2,6 +2,7 @@ import { watch, FSWatcher } from "node:fs";
 import { join, relative } from "node:path";
 import type { Config } from "./config.js";
 import { minimatch } from "minimatch";
+import { glob } from "glob";
 
 export interface ChangeEvent {
   type: "change" | "add" | "unlink";
@@ -58,7 +59,6 @@ export class Watcher {
    * Watch a specific pattern
    */
   private async watchPattern(pattern: string): Promise<void> {
-    const { glob } = await import("glob");
     const fullPattern = join(this.workTree, pattern);
 
     // Find all matching files/directories

@@ -6,11 +6,11 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { ResolvedMemorySearchConfig } from "../../config.js";
-import { parseEmbedding, cosineSimilarity } from "../encoding/embeddings.js";
-import { getDatabase, initializeDatabase } from "../storage/db.js";
+import type { ResolvedMemorySearchConfig } from "../config.js";
+import { parseEmbedding, cosineSimilarity } from "./encoding/embeddings.js";
+import { getDatabase, initializeDatabase } from "./db.js";
 import { createEmbeddingProvider, type EmbeddingProvider } from "@server/world/providers/embeddings/index.js";
-import { MemoryIndexerImpl } from "../indexing/index.js";
+import { MemoryIndexerImpl } from "./indexing.js";
 
 export type MemorySearchResult = {
   path: string;

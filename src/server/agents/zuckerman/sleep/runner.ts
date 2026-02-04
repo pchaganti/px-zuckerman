@@ -11,7 +11,6 @@ import { resolveSleepConfig } from "./config.js";
 import { shouldSleep, resolveSleepContextWindowTokens } from "./trigger.js";
 import { processConversation } from "./processor.js";
 import { consolidateMemories } from "./consolidator.js";
-import { resolveMemoryDir } from "../core/memory/services/storage/persistence.js";
 import { UnifiedMemoryManager } from "../core/memory/manager.js";
 
 /**
@@ -85,8 +84,7 @@ export async function runSleepModeIfNeeded(params: {
     const consolidatedMemories = consolidateMemories(importantMessages, summary);
 
     // Phase 4: Save using UnifiedMemoryManager (creates structured memories + file persistence)
-    const storageDir = resolveMemoryDir(homedirDir);
-    const memoryManager = new UnifiedMemoryManager(storageDir, homedirDir);
+    const memoryManager = UnifiedMemoryManager.create(homedirDir);
     
     // Save consolidated memories (creates episodic/semantic memories automatically)
     memoryManager.saveConsolidatedMemories(consolidatedMemories, conversationId);

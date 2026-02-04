@@ -11,6 +11,9 @@ import type { AgentRuntimeFactory } from "@server/world/runtime/agents/index.js"
 import type { Channel } from "./types.js";
 import { setChannelRegistry } from "@server/agents/zuckerman/tools/channels/registry.js";
 import { formatMessageWithChannelSource } from "./envelope.js";
+import { loadConfig } from "@server/world/config/index.js";
+import { resolveSecurityContext } from "@server/world/execution/security/context/index.js";
+import { activityRecorder } from "@server/world/activity/index.js";
 
 /**
  * Initialize and register all configured channels
@@ -83,8 +86,7 @@ export async function initializeChannels(
         cm.addMessage(route.conversationId, "user", message.content);
 
         // Run agent
-        const config = await import("@server/world/config/index.js").then(m => m.loadConfig());
-        const { resolveSecurityContext } = await import("@server/world/execution/security/context/index.js");
+        const config = await loadConfig();
         const securityContext = await resolveSecurityContext(
           config.security,
           route.conversationId,
@@ -190,7 +192,6 @@ export async function initializeChannels(
         cm.addMessage(route.conversationId, "user", message.content);
 
         // Record incoming channel message
-        const { activityRecorder } = await import("@server/world/activity/index.js");
         await activityRecorder.recordChannelMessageIncoming(
           route.agentId,
           route.conversationId,
@@ -200,8 +201,7 @@ export async function initializeChannels(
         );
 
         // Run agent
-        const config = await import("@server/world/config/index.js").then(m => m.loadConfig());
-        const { resolveSecurityContext } = await import("@server/world/execution/security/context/index.js");
+        const config = await loadConfig();
         const securityContext = await resolveSecurityContext(
           config.security,
           route.conversationId,

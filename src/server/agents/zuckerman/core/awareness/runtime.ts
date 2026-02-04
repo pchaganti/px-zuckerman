@@ -14,14 +14,11 @@ import { agentDiscovery } from "@server/agents/discovery.js";
 import {
   resolveAgentHomedirDir,
 } from "@server/world/homedir/resolver.js";
-import {
-  loadMemoryForConversation,
-  formatMemoryForPrompt,
-  resolveMemoryDir,
-} from "@server/agents/zuckerman/core/memory/services/storage/persistence.js";
 import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
+import type { SemanticMemory, EpisodicMemory, ProceduralMemory } from "@server/agents/zuckerman/core/memory/types.js";
 import { runSleepModeIfNeeded } from "@server/agents/zuckerman/sleep/index.js";
 import { activityRecorder } from "@server/world/activity/index.js";
+import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
@@ -31,6 +28,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   private conversationManager: ConversationManager;
   private toolRegistry: ZuckermanToolRegistry;
   private dbInitialized: boolean = false;
+  private memoryManager: UnifiedMemoryManager | null = null;
   
   // Load prompts from agent's core directory (where markdown files are)
   private readonly agentDir: string;
@@ -51,6 +49,28 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   /**
+   * Initialize memory manager with homedir directory and provider
+   */
+  private initializeMemoryManager(homedirDir: string, provider?: any): void {
+    if (!this.memoryManager) {
+      this.memoryManager = UnifiedMemoryManager.create(homedirDir, provider);
+    } else if (provider) {
+      // Update provider if manager already exists
+      this.memoryManager.setLLMProvider(provider);
+    }
+  }
+
+  /**
+   * Get memory manager instance (must be initialized first)
+   */
+  private getMemoryManager(): UnifiedMemoryManager {
+    if (!this.memoryManager) {
+      throw new Error("Memory manager not initialized. Call initializeMemoryManager first.");
+    }
+    return this.memoryManager;
+  }
+
+  /**
    * Initialize the agent - called once when agent is created
    */
   async initialize(): Promise<void> {
@@ -58,20 +78,15 @@ export class ZuckermanAwareness implements AgentRuntime {
       const config = await loadConfig();
       const homedirDir = resolveAgentHomedirDir(config, this.agentId);
       
+      // Initialize memory manager
+      this.initializeMemoryManager(homedirDir);
+      
       // Initialize database for vector search if memory search is enabled
       const memorySearchConfig = config.agent?.memorySearch;
       if (memorySearchConfig) {
-        const { resolveMemorySearchConfig } = await import("@server/agents/zuckerman/core/memory/config.js");
-        const { getDatabase, initializeDatabase } = await import("@server/agents/zuckerman/core/memory/services/storage/db.js");
         const resolvedConfig = resolveMemorySearchConfig(memorySearchConfig, homedirDir, this.agentId);
         if (resolvedConfig) {
-          // Check if already initialized, otherwise initialize
-          const dbResult = getDatabase(homedirDir, this.agentId);
-          if (!dbResult) {
-            const embeddingCacheTable = "embedding_cache";
-            const ftsTable = "fts_memory";
-            initializeDatabase(resolvedConfig, homedirDir, this.agentId, embeddingCacheTable, ftsTable);
-          }
+          await this.getMemoryManager().initializeDatabase(resolvedConfig, this.agentId);
           this.dbInitialized = true;
         }
       }
@@ -95,11 +110,10 @@ export class ZuckermanAwareness implements AgentRuntime {
     
     // Reload and add memory on every call to ensure we have the latest semantic memory
     // This ensures any semantic memories added during message processing are included
-    if (homedirDir) {
+    if (homedirDir && this.memoryManager) {
       // Always reload from files to get the latest semantic memory updates
-      const { dailyLogs, longTermMemory } = loadMemoryForConversation(homedirDir);
-      if (dailyLogs.size > 0 || longTermMemory) {
-        const memorySection = formatMemoryForPrompt(dailyLogs, longTermMemory);
+      const memorySection = this.memoryManager.loadMemoryForPrompt();
+      if (memorySection) {
         parts.push(memorySection);
       }
     }
@@ -153,6 +167,9 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Resolve homedir directory
       const homedirDir = resolveAgentHomedirDir(config, this.agentId);
 
+      // Initialize memory manager if not already initialized
+      this.initializeMemoryManager(homedirDir, provider);
+
       // Check if sleep mode is needed before processing the message
       // This processes and consolidates memories if context window is getting full
       const modelForSleep = model || selectModel(provider, config);
@@ -172,9 +189,53 @@ export class ZuckermanAwareness implements AgentRuntime {
       // ensuring we always have the latest semantic memories
       const systemPrompt = await this.buildSystemPrompt(prompts, homedirDir);
 
+      // Retrieve relevant memories based on the user message
+      let retrievedMemoriesText = "";
+      try {
+        const memoryResult = await this.getMemoryManager().retrieveMemories({
+          query: message,
+          conversationId,
+          types: ["semantic", "episodic", "procedural"],
+          limit: 10,
+        });
+
+        if (memoryResult.memories.length > 0) {
+          const memoryParts = memoryResult.memories.map((mem) => {
+            if (mem.type === "semantic") {
+              const semantic = mem as unknown as SemanticMemory;
+              // Format semantic memory clearly
+              let formatted = semantic.fact;
+              
+              // Add category if available
+              if (semantic.category) {
+                formatted = `${semantic.category}: ${formatted}`;
+              }
+              
+              // Add confidence if available and high
+              if (semantic.confidence !== undefined && semantic.confidence >= 0.7) {
+                formatted = `${formatted} (confidence: ${semantic.confidence.toFixed(1)})`;
+              }
+              
+              return `[Semantic Memory] ${formatted}`;
+            } else if (mem.type === "episodic") {
+              const episodic = mem as unknown as EpisodicMemory;
+              return `[Episodic Memory] ${episodic.event}: ${episodic.context.what}`;
+            } else if (mem.type === "procedural") {
+              const procedural = mem as unknown as ProceduralMemory;
+              return `[Procedural Memory] ${procedural.pattern}: ${procedural.action}`;
+            }
+            return `[Memory] ${JSON.stringify(mem)}`;
+          });
+          retrievedMemoriesText = `\n\n## Retrieved Memories\n${memoryParts.join("\n")}`;
+        }
+      } catch (memoryError) {
+        // Don't fail if memory retrieval fails
+        console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
+      }
+
       // Prepare messages
       const messages: LLMMessage[] = [
-        { role: "system", content: systemPrompt },
+        { role: "system", content: systemPrompt + retrievedMemoriesText },
       ];
 
       // Load conversation history
@@ -197,13 +258,11 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Note: Semantic memory is reloaded on every message in buildSystemPrompt(),
       // so new memories added here will be available on the next message
       try {
-        const storageDir = resolveMemoryDir(homedirDir);
-        const memoryManager = new UnifiedMemoryManager(storageDir, homedirDir, provider);
-        
         const conversationContext = conversation 
           ? conversation.messages.slice(-3).map(m => m.content).join("\n")
           : undefined;
-        await memoryManager.onNewMessage(message, conversationId, conversationContext);
+          console.log("conversationContext", conversationContext);
+        await this.getMemoryManager().onNewMessage(message, conversationId, conversationContext);
       } catch (extractionError) {
         // Don't fail the main flow if extraction fails
         console.warn(`[ZuckermanRuntime] Memory extraction failed:`, extractionError);

@@ -1,6 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes, scrypt } from "node:crypto";
 import { promisify } from "node:util";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, unlink, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { SecretConfig } from "../types.js";
@@ -137,7 +137,7 @@ export class SecretManager {
     this.cache.delete(key);
     const secretFile = join(SECRETS_DIR, `${key}.enc`);
     if (existsSync(secretFile)) {
-      await import("node:fs/promises").then((fs) => fs.unlink(secretFile));
+      await unlink(secretFile);
     }
   }
 
@@ -149,9 +149,7 @@ export class SecretManager {
       return [];
     }
 
-    const files = await import("node:fs/promises").then((fs) =>
-      fs.readdir(SECRETS_DIR),
-    );
+    const files = await readdir(SECRETS_DIR);
     return files
       .filter((f) => f.endsWith(".enc"))
       .map((f) => f.slice(0, -4));

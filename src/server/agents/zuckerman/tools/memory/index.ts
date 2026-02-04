@@ -3,7 +3,7 @@ import type { ToolExecutionContext } from "../terminal/index.js";
 import { loadConfig } from "@server/world/config/index.js";
 import { resolveAgentHomedirDir } from "@server/world/homedir/resolver.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
-import { getMemorySearchManager } from "@server/agents/zuckerman/core/memory/services/retrieval/search.js";
+import { getMemorySearchManager } from "@server/agents/zuckerman/core/memory/retrieval/search.js";
 
 /**
  * Create memory search tool
@@ -13,7 +13,7 @@ export function createMemorySearchTool(): Tool {
     definition: {
       name: "memory_search",
       description:
-        "Semantically search MEMORY.md and memory/*.md files (and optional conversation transcripts) for relevant information. Use this before answering questions about prior work, decisions, dates, people, preferences, or todos. Returns top snippets with path and line numbers.",
+        "Semantically search MEMORY.md and memory/*.md files (and optional conversation transcripts) for relevant information. ALWAYS use this tool when asked about personal information (name, preferences, facts about the user), prior work, decisions, dates, people, preferences, or todos. Even if you think you know the answer, search memory first to ensure accuracy. Returns top snippets with path and line numbers.",
       parameters: {
         type: "object",
         properties: {

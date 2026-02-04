@@ -4,6 +4,7 @@ import { startGatewayServer, type GatewayServer } from "@server/world/communicat
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { existsSync } from "node:fs";
 
 let gatewayServer: GatewayServer | null = null;
 let gatewayPort: number = 18789;
@@ -100,19 +101,18 @@ export async function stopGateway(host: string = "127.0.0.1", port: number = 187
     // Use pnpm to run the CLI command (pnpm cli gateway stop)
     // This matches the package.json script: "cli": "tsx src/clients/cli/index.ts"
     const pnpmPath = join(projectRoot, "node_modules", ".bin", "pnpm");
-    const fs = await import("node:fs");
     
     let command: string;
     let args: string[];
     
-    if (fs.existsSync(pnpmPath)) {
+    if (existsSync(pnpmPath)) {
       command = pnpmPath;
       args = ["cli", "gateway", "stop", "--host", host, "--port", String(port)];
     } else {
       // Fallback: use tsx directly
       const tsxPath = join(projectRoot, "node_modules", ".bin", "tsx");
       const cliScript = join(projectRoot, "src", "clients", "cli", "index.ts");
-      if (fs.existsSync(tsxPath)) {
+      if (existsSync(tsxPath)) {
         command = tsxPath;
         args = [cliScript, "gateway", "stop", "--host", host, "--port", String(port)];
       } else {

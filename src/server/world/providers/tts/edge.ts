@@ -21,27 +21,14 @@ export interface EdgeTextToSpeechResult {
   latencyMs?: number;
 }
 
+import { EdgeTTS } from "node-edge-tts";
+import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+
 const DEFAULT_EDGE_VOICE = "en-US-MichelleNeural";
 const DEFAULT_EDGE_LANG = "en-US";
 const DEFAULT_OUTPUT_FORMAT = "audio-24khz-48kbitrate-mono-mp3";
-
-// Lazy load edge-tts to avoid requiring it as a hard dependency
-let EdgeTTS: any = null;
-
-async function getEdgeTTS() {
-  if (!EdgeTTS) {
-    try {
-      // Dynamic import to avoid type errors if module is not installed
-      const edgeTtsModule = await import("node-edge-tts" as string);
-      EdgeTTS = (edgeTtsModule as any).EdgeTTS;
-    } catch (error) {
-      throw new Error(
-        "node-edge-tts not installed. Install it with: npm install node-edge-tts",
-      );
-    }
-  }
-  return EdgeTTS;
-}
 
 export async function edgeTextToSpeech(
   text: string,
@@ -50,41 +37,57 @@ export async function edgeTextToSpeech(
   const startTime = Date.now();
   
   try {
-    const EdgeTTSClass = await getEdgeTTS();
-    const tts = new (EdgeTTSClass as any)();
-    
     const voice = options.voice || DEFAULT_EDGE_VOICE;
     const lang = options.lang || DEFAULT_EDGE_LANG;
     const outputFormat = options.outputFormat || DEFAULT_OUTPUT_FORMAT;
 
-    // Build SSML if pitch/rate/volume are specified
-    let ssmlText = text;
-    if (options.pitch || options.rate || options.volume) {
-      const pitch = options.pitch || "+0Hz";
-      const rate = options.rate || "+0%";
-      const volume = options.volume || "+0%";
-      ssmlText = `<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="${lang}">
-        <voice name="${voice}">
-          <prosody pitch="${pitch}" rate="${rate}" volume="${volume}">
-            ${text}
-          </prosody>
-        </voice>
-      </speak>`;
-    }
-
-    const audioBuffer = await tts.toBuffer({
-      text: ssmlText,
+    // Configure EdgeTTS with options
+    const ttsConfig: any = {
       voice,
+      lang,
       outputFormat,
-    });
-
-    const latencyMs = Date.now() - startTime;
-
-    return {
-      success: true,
-      audioBuffer: Buffer.from(audioBuffer),
-      latencyMs,
     };
+
+    // Add pitch/rate/volume if specified
+    if (options.pitch) ttsConfig.pitch = options.pitch;
+    if (options.rate) ttsConfig.rate = options.rate;
+    if (options.volume) ttsConfig.volume = options.volume;
+
+    const tts = new EdgeTTS(ttsConfig);
+
+    // Create temporary file path
+    const tempFile = join(tmpdir(), `edge-tts-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.mp3`);
+
+    try {
+      // Use ttsPromise to write to temp file
+      await tts.ttsPromise(text, tempFile);
+
+      // Read the file as buffer
+      const audioBuffer = readFileSync(tempFile);
+
+      const latencyMs = Date.now() - startTime;
+
+      // Clean up temp file
+      try {
+        unlinkSync(tempFile);
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+
+      return {
+        success: true,
+        audioBuffer,
+        latencyMs,
+      };
+    } catch (ttsError) {
+      // Clean up temp file on error
+      try {
+        unlinkSync(tempFile);
+      } catch (cleanupError) {
+        // Ignore cleanup errors
+      }
+      throw ttsError;
+    }
   } catch (error) {
     return {
       success: false,
@@ -95,14 +98,11 @@ export async function edgeTextToSpeech(
 
 /**
  * Get list of available Edge text-to-speech voices
+ * Note: node-edge-tts doesn't provide a listVoices method, so we return an empty array
+ * Users can find available voices at: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/language-support?tabs=tts
  */
 export async function getEdgeVoices(): Promise<Array<{ name: string; locale: string; gender: string }>> {
-  try {
-    const EdgeTTSClass = await getEdgeTTS();
-    const tts = new (EdgeTTSClass as any)();
-    return await tts.listVoices();
-  } catch (error) {
-    console.error("Failed to list Edge text-to-speech voices:", error);
-    return [];
-  }
+  // node-edge-tts doesn't have a listVoices() method
+  // Return empty array - voices can be found at Microsoft's documentation
+  return [];
 }

@@ -1,6 +1,7 @@
 import { Cron } from "croner";
 import type { CalendarEvent } from "./types.js";
 import { saveEvents } from "./storage.js";
+import { executeEvent } from "./executor.js";
 
 let cronInstances = new Map<string, Cron>();
 
@@ -101,7 +102,6 @@ export function scheduleEvent(event: CalendarEvent, eventsMap: Map<string, Calen
     } else {
       console.log(`[Calendar] Scheduled one-time event ${event.id} "${event.title}" for ${nextDate.toISOString()} (in ${delaySeconds}s)`);
       setTimeout(async () => {
-        const { executeEvent } = await import("./executor.js");
         executeEvent(event, eventsMap).catch((err) => {
           console.error(`[Calendar] Error in scheduled event ${event.id}:`, err);
         });
@@ -119,7 +119,6 @@ export function scheduleEvent(event: CalendarEvent, eventsMap: Map<string, Calen
         timezone: event.recurrence.timezone,
       }, async () => {
         console.log(`[Calendar] Cron trigger fired for event ${event.id} at ${new Date().toISOString()}`);
-        const { executeEvent } = await import("./executor.js");
         executeEvent(event, eventsMap).catch((err) => {
           console.error(`[Calendar] Error in cron event ${event.id}:`, err);
         });
@@ -153,7 +152,6 @@ export function scheduleEvent(event: CalendarEvent, eventsMap: Map<string, Calen
     } else {
       console.log(`[Calendar] Scheduling recurring event ${event.id} "${event.title}" (${event.recurrence.type}) for ${nextDate.toISOString()} (in ${delaySeconds}s)`);
       setTimeout(async () => {
-        const { executeEvent } = await import("./executor.js");
         executeEvent(event, eventsMap).catch((err) => {
           console.error(`[Calendar] Error in scheduled recurring event ${event.id}:`, err);
         });

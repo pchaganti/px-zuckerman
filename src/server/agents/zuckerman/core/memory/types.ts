@@ -162,4 +162,6 @@ export interface MemoryManager {
   // Cleanup
   cleanup(): Promise<void>;
   clearExpiredWorkingMemory(): void;
+  
+  loadMemoryForPrompt(): string;
 }

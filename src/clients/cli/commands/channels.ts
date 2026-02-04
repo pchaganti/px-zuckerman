@@ -4,6 +4,7 @@ import { loadConfig, saveConfig } from "@server/world/config/index.js";
 import { outputJson, shouldOutputJson } from "../utils/json-output.js";
 // qrcode-terminal is CommonJS, needs special handling in ESM
 import qrcodeTerminal from "qrcode-terminal";
+import { createInterface } from "readline";
 
 export function createChannelsCommand(): Command {
   const cmd = new Command("channels")
@@ -369,8 +370,7 @@ async function loginDiscord(options: { json?: boolean } = {}): Promise<void> {
   console.log("This will configure Discord bot connection.");
   console.log("You need a Discord bot token from https://discord.com/developers/applications\n");
 
-  const readline = await import("readline");
-  const rl = readline.createInterface({
+  const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
@@ -431,8 +431,7 @@ async function loginSignal(options: { json?: boolean } = {}): Promise<void> {
   console.log("Signal integration requires signal-cli to be installed and configured.");
   console.log("For more information, visit: https://github.com/AsamK/signal-cli\n");
 
-  const readline = await import("readline");
-  const rl = readline.createInterface({
+  const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
   });

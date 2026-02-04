@@ -6,6 +6,7 @@
 import { join } from "node:path";
 import { WorkingMemoryStore } from "./stores/working/index.js";
 import { EpisodicMemoryStore } from "./stores/episodic/index.js";
+import { SemanticMemoryStore } from "./stores/semantic/index.js";
 import { ProceduralMemoryStore } from "./stores/procedural/index.js";
 import { ProspectiveMemoryStore } from "./stores/prospective/index.js";
 import { EmotionalMemoryStore } from "./stores/emotional/index.js";
@@ -21,36 +22,60 @@ import type {
   MemoryRetrievalResult,
   BaseMemory,
 } from "./types.js";
-import {
-  loadMemoryForConversation,
-  appendDailyMemory,
-  appendLongTermMemory,
-} from "./services/storage/persistence.js";
-import { extractMemoriesFromMessage } from "./services/extraction/index.js";
+
+import { extractMemoriesFromMessage } from "./memory-classifier.js";
 import type { LLMProvider } from "@server/world/providers/llm/types.js";
 import type { ResolvedMemorySearchConfig } from "./config.js";
-import { initializeDatabase } from "./services/storage/db.js";
+import { initializeDatabase } from "./retrieval/db.js";
+import { existsSync, readFileSync } from "node:fs";
 
 export class UnifiedMemoryManager implements MemoryManager {
   private workingMemory: WorkingMemoryStore;
   private episodicMemory: EpisodicMemoryStore;
+  private semanticMemory: SemanticMemoryStore;
   private proceduralMemory: ProceduralMemoryStore;
   private prospectiveMemory: ProspectiveMemoryStore;
   private emotionalMemory: EmotionalMemoryStore;
-  private storageDir: string;
+
   private homedirDir?: string;
   private llmProvider?: LLMProvider;
   private dbInitialized: boolean = false;
 
-  constructor(storageDir: string, homedirDir?: string, llmProvider?: LLMProvider) {
-    this.storageDir = storageDir;
-    this.homedirDir = homedirDir;
+  constructor(homedirDir?: string, llmProvider?: LLMProvider) {
     this.llmProvider = llmProvider;
+
+    this.homedirDir = homedirDir;
+    const memoryDir = this.resolveMemoryDir(homedirDir!);
+
     this.workingMemory = new WorkingMemoryStore();
-    this.episodicMemory = new EpisodicMemoryStore(storageDir);
-    this.proceduralMemory = new ProceduralMemoryStore(storageDir);
-    this.prospectiveMemory = new ProspectiveMemoryStore(storageDir);
-    this.emotionalMemory = new EmotionalMemoryStore(storageDir);
+    this.episodicMemory = new EpisodicMemoryStore(memoryDir);
+    this.semanticMemory = new SemanticMemoryStore(memoryDir);
+    this.proceduralMemory = new ProceduralMemoryStore(memoryDir);
+    this.prospectiveMemory = new ProspectiveMemoryStore(memoryDir);
+    this.emotionalMemory = new EmotionalMemoryStore(memoryDir);
+  }
+
+  /**
+ * Resolve memory directory path
+ */
+  resolveMemoryDir(homedirDir: string): string {
+    return join(homedirDir, "memory");
+  }
+
+
+  /**
+   * Set or update the LLM provider
+   */
+  setLLMProvider(provider: LLMProvider): void {
+    this.llmProvider = provider;
+  }
+
+  /**
+   * Create a memory manager instance from homedir directory
+   * This is a convenience method to avoid direct use of resolveMemoryDir
+   */
+  static create(homedirDir: string, llmProvider?: LLMProvider): UnifiedMemoryManager {
+    return new UnifiedMemoryManager(homedirDir, llmProvider);
   }
 
   /**
@@ -71,7 +96,7 @@ export class UnifiedMemoryManager implements MemoryManager {
     try {
       const embeddingCacheTable = "embedding_cache";
       const ftsTable = "fts_memory";
-      
+
       initializeDatabase(
         config,
         this.homedirDir,
@@ -79,7 +104,7 @@ export class UnifiedMemoryManager implements MemoryManager {
         embeddingCacheTable,
         ftsTable,
       );
-      
+
       this.dbInitialized = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -114,13 +139,7 @@ export class UnifiedMemoryManager implements MemoryManager {
     memory: Omit<EpisodicMemory, "id" | "type" | "createdAt" | "updatedAt">
   ): string {
     const id = this.episodicMemory.add(memory);
-    
-    // Also append to daily log for backward compatibility
-    if (this.homedirDir) {
-      const content = `**Event**: ${memory.event}\n**When**: ${new Date(memory.timestamp).toISOString()}\n**What**: ${memory.context.what}${memory.context.why ? `\n**Why**: ${memory.context.why}` : ""}`;
-      appendDailyMemory(this.homedirDir, content);
-    }
-    
+
     return id;
   }
 
@@ -138,28 +157,24 @@ export class UnifiedMemoryManager implements MemoryManager {
   }
 
   // ========== Semantic Memory ==========
-  // Stores facts, knowledge, and concepts. Permanent storage, saved to MEMORY.md (or memory.md).
+  // Stores facts, knowledge, and concepts. Permanent storage, saved to semantic.json.
 
   addSemanticMemory(
     memory: Omit<SemanticMemory, "id" | "type" | "createdAt" | "updatedAt">
   ): string {
-    // For now, store in long-term memory file
-    // TODO: Implement proper semantic memory storage
-    if (this.homedirDir) {
-      const content = `**Fact**: ${memory.fact}${memory.category ? `\n**Category**: ${memory.category}` : ""}${memory.confidence !== undefined ? `\n**Confidence**: ${memory.confidence}` : ""}`;
-      appendLongTermMemory(this.homedirDir, content);
-    }
-    
-    // Generate ID for tracking
-    return `semantic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    // Store in structured JSON file only
+    return this.semanticMemory.add(memory);
   }
 
   async getSemanticMemories(
     options?: MemoryRetrievalOptions
   ): Promise<SemanticMemory[]> {
-    // TODO: Implement proper semantic memory retrieval
-    // For now, return empty array
-    return [];
+    // Query from structured JSON store
+    return this.semanticMemory.query({
+      conversationId: options?.conversationId,
+      query: options?.query,
+      limit: options?.limit,
+    });
   }
 
   // ========== Procedural Memory ==========
@@ -295,7 +310,7 @@ export class UnifiedMemoryManager implements MemoryManager {
   async cleanup(): Promise<void> {
     // Clear expired working memories
     this.clearExpiredWorkingMemory();
-    
+
     // TODO: Clean up old episodic memories
     // TODO: Clean up completed prospective memories
   }
@@ -318,6 +333,35 @@ export class UnifiedMemoryManager implements MemoryManager {
    */
   getProspectiveMemoriesByContext(context: string): ProspectiveMemory[] {
     return this.prospectiveMemory.getByContext(context);
+  }
+
+
+  /**
+   * Load and format memory for prompt injection
+   * Returns formatted memory string ready to be included in system prompt
+   */
+  loadMemoryForPrompt(): string {
+    if (!this.homedirDir) {
+      throw new Error("Homedir directory not set");
+    }
+
+    const parts: string[] = [];
+
+    // Load semantic memories from JSON store
+    const semanticMemories = this.semanticMemory.getAll();
+    if (semanticMemories.length > 0) {
+      const semanticParts = semanticMemories.map(mem => {
+        let formatted = mem.fact;
+        if (mem.category) {
+          formatted = `${mem.category}: ${formatted}`;
+        }
+        return `- ${formatted}`;
+      });
+      parts.push(`## Semantic Memory\n\n${semanticParts.join("\n")}`);
+    }
+
+
+    return parts.length > 0 ? parts.join("\n\n---\n\n") : "";
   }
 
   // ========== Sleep Mode Integration ==========
@@ -358,7 +402,7 @@ export class UnifiedMemoryManager implements MemoryManager {
   ): Promise<void> {
     if (!this.llmProvider) {
       // No LLM provider available, skip extraction
-      return;
+      throw new Error("LLM provider not set");
     }
 
     try {
@@ -370,25 +414,25 @@ export class UnifiedMemoryManager implements MemoryManager {
 
       if (extractionResult.hasImportantInfo && extractionResult.memories.length > 0) {
         const now = Date.now();
-        
+
         for (const memory of extractionResult.memories) {
           // Save to semantic memory (long-term): facts, preferences, learnings
           if (memory.type === "fact" || memory.type === "preference" || memory.type === "learning") {
             // Use structured data if available for better fact extraction
-            const fact = memory.structuredData 
+            const fact = memory.structuredData
               ? Object.entries(memory.structuredData)
-                  .filter(([k]) => k !== "field")
-                  .map(([k, v]) => `${k}: ${v}`)
-                  .join(", ") || memory.content
+                .filter(([k]) => k !== "field")
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ") || memory.content
               : memory.content;
-            
+
             this.addSemanticMemory({
               fact,
               category: memory.type,
               confidence: memory.importance,
               source: conversationId,
             });
-          } 
+          }
           // Save to episodic memory (time-bound): decisions, events
           else if (memory.type === "decision" || memory.type === "event") {
             this.addEpisodicMemory({

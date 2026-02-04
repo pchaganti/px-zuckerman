@@ -4,6 +4,9 @@
  * Supports multiple providers: OpenAI Whisper, Deepgram, Groq, etc.
  */
 
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
+
 export type SttProvider = "openai" | "deepgram" | "groq" | "whisper";
 
 export interface SttTranscribeOptions {
@@ -39,8 +42,6 @@ async function transcribeWithOpenAI(
   }
 
   try {
-    const { readFile } = await import("node:fs/promises");
-    const { basename } = await import("node:path");
     const audioBuffer = await readFile(audioPath);
     
     // Node.js 22+ has native FormData and File support
@@ -110,7 +111,6 @@ async function transcribeWithDeepgram(
   }
 
   try {
-    const { readFile } = await import("node:fs/promises");
     const audioBuffer = await readFile(audioPath);
 
     const baseUrl = process.env.DEEPGRAM_BASE_URL || "https://api.deepgram.com/v1";
@@ -175,7 +175,6 @@ async function transcribeWithGroq(
   }
 
   try {
-    const { readFile } = await import("node:fs/promises");
     const audioBuffer = await readFile(audioPath);
     const audioBase64 = audioBuffer.toString("base64");
 
