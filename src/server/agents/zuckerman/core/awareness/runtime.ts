@@ -536,13 +536,34 @@ export class ZuckermanAwareness implements AgentRuntime {
         tokensUsed: result.tokensUsed?.total,
       };
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      
+      // Mark current task as failed if there is one
+      const currentTask = this.planningManager.getCurrentTask();
+      if (currentTask) {
+        this.planningManager.failCurrentTask(errorMessage);
+        
+        // Emit queue update event
+        if (stream) {
+          const queueState = this.planningManager.getQueueState();
+          await stream({
+            type: "queue" as const,
+            data: {
+              agentId: this.agentId,
+              queue: queueState,
+              timestamp: Date.now(),
+            },
+          });
+        }
+      }
+      
       // Emit lifecycle error event
       if (stream) {
         await stream({
           type: "lifecycle",
           data: {
             phase: "error",
-            error: err instanceof Error ? err.message : String(err),
+            error: errorMessage,
             runId,
           },
         });
@@ -553,7 +574,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         this.agentId,
         conversationId,
         runId,
-        err instanceof Error ? err.message : String(err),
+        errorMessage,
       );
       console.error(`[ZuckermanRuntime] Error in run:`, err);
       throw err;
@@ -986,14 +1007,38 @@ export class ZuckermanAwareness implements AgentRuntime {
     }
 
     // Run LLM again with tool results
-    const result = await this.callLLMWithStreaming({
-      model,
-      messages,
-      temperature,
-      tools: llmTools,
-      stream,
-      runId,
-    });
+    let result;
+    try {
+      result = await this.callLLMWithStreaming({
+        model,
+        messages,
+        temperature,
+        tools: llmTools,
+        stream,
+        runId,
+      });
+    } catch (err) {
+      // If LLM call fails, mark task as failed
+      const currentTask = this.planningManager.getCurrentTask();
+      if (currentTask) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        this.planningManager.failCurrentTask(errorMessage);
+        
+        // Emit queue update event
+        if (stream) {
+          const queueState = this.planningManager.getQueueState();
+          await stream({
+            type: "queue" as const,
+            data: {
+              agentId: this.agentId,
+              queue: queueState,
+              timestamp: Date.now(),
+            },
+          });
+        }
+      }
+      throw err; // Re-throw to be caught by outer catch
+    }
 
     // Handle nested tool calls (recursive)
     if (result.toolCalls && result.toolCalls.length > 0) {
@@ -1027,7 +1072,7 @@ export class ZuckermanAwareness implements AgentRuntime {
         if (stream) {
           const queueState = this.planningManager.getQueueState();
           await stream({
-            type: "queue",
+            type: "queue" as const,
             data: {
               agentId: this.agentId,
               queue: queueState,

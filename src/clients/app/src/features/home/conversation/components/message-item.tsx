@@ -86,6 +86,27 @@ export function MessageItem({ message, agentId, isSending }: MessageItemProps) {
           />
         )}
         
+        {message.toolCalls && message.toolCalls.length > 0 ? (
+          <div className="mt-3">
+            <JsonViewer 
+              data={message.toolCalls.map(tc => {
+                let parsedArgs: unknown;
+                try {
+                  parsedArgs = JSON.parse(tc.arguments);
+                } catch {
+                  parsedArgs = tc.arguments;
+                }
+                return {
+                  id: tc.id,
+                  name: tc.name,
+                  arguments: parsedArgs,
+                };
+              })} 
+              title="Tools Used" 
+            />
+          </div>
+        ) : null}
+        
         {message.rawResponse ? (
           <div className="mt-3">
             <JsonViewer data={message.rawResponse} title="Raw JSON Response" />

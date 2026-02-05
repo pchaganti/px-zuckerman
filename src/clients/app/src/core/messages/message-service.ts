@@ -37,6 +37,11 @@ export class MessageService {
       content: msg.content,
       timestamp: msg.timestamp || Date.now(),
       rawResponse: undefined,
+      toolCalls: msg.toolCalls as Array<{
+        id: string;
+        name: string;
+        arguments: string;
+      }> | undefined,
     }));
   }
 

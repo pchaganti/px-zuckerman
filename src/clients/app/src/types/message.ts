@@ -14,6 +14,11 @@ export interface Message {
   content: string;
   timestamp: number;
   rawResponse?: unknown; // Store raw JSON response for viewing
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: string;
+  }>; // Tool calls made by the assistant
   isStreaming?: boolean; // For streaming responses
   steps?: TaskStep[]; // Planning steps
   currentStep?: TaskStep; // Current active step

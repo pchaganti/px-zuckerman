@@ -12,6 +12,7 @@ import {
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
+import { extractSnapshotCode, type SnapshotResult, type SnapshotError } from "./snapshot.js";
 
 const BROWSER_DATA_DIR = getBrowserDataDir();
 
@@ -96,7 +97,7 @@ export function createBrowserTool(): Tool {
   return {
     definition: {
       name: "browser",
-      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Browser stays open indefinitely until explicitly closed with the 'close' action. Screenshots are saved to local file paths that can be shared or sent via appropriate channels.",
+      description: "Control Chrome/Chromium browser via CDP. Navigate, take snapshots, interact with pages. Browser stays open indefinitely until explicitly closed with the 'close' action. Screenshots are saved to local file paths that can be shared or sent via appropriate channels. Snapshots extract only meaningful content (interactive elements, headings, text) to handle large pages efficiently.",
       parameters: {
         type: "object",
         properties: {
@@ -130,7 +131,19 @@ export function createBrowserTool(): Tool {
           },
           format: {
             type: "string",
-            description: "Snapshot format: aria or ai (for snapshot action)",
+            description: "Snapshot format: aria or ai (for snapshot action). Default: ai",
+          },
+          snapshotSelector: {
+            type: "string",
+            description: "CSS selector to scope snapshot to specific element (for snapshot action)",
+          },
+          interactive: {
+            type: "boolean",
+            description: "Focus on interactive elements only (for snapshot action)",
+          },
+          maxChars: {
+            type: "number",
+            description: "Maximum characters per text element (for snapshot action). Default: 200",
           },
         },
         required: ["action"],
@@ -216,7 +229,10 @@ export function createBrowserTool(): Tool {
             }
 
             case "snapshot": {
-              const format = (typeof params.format === "string" ? params.format : "aria") as "aria" | "ai";
+              const format = (typeof params.format === "string" ? params.format : "ai") as "aria" | "ai";
+              const snapshotSelector = typeof params.snapshotSelector === "string" ? params.snapshotSelector : null;
+              const interactiveOnly = params.interactive === true;
+              const maxChars = typeof params.maxChars === "number" ? params.maxChars : 200;
               
               if (format === "aria") {
                 // ARIA snapshot - get accessible elements
@@ -277,13 +293,32 @@ export function createBrowserTool(): Tool {
                   },
                 };
               } else {
-                // AI snapshot - simplified DOM structure
-                const html = await page.content();
+                // AI snapshot - extract meaningful content (like OpenClaw)
+                // Convert string to function for page.evaluate()
+                const extractFn = new Function("options", `return (${extractSnapshotCode.trim()})(options);`);
+                const snapshot = await page.evaluate(
+                  extractFn as (options: any) => SnapshotResult | SnapshotError,
+                  {
+                    selector: snapshotSelector,
+                    interactiveOnly,
+                    maxChars,
+                  }
+                ) as SnapshotResult | SnapshotError;
+
+                if ("error" in snapshot) {
+                  return {
+                    success: false,
+                    error: snapshot.error,
+                  };
+                }
+
                 return {
                   success: true,
                   result: {
                     format: "ai",
-                    html: html.substring(0, 50000), // Limit size
+                    snapshot: snapshot.snapshot,
+                    elements: snapshot.elements,
+                    stats: snapshot.stats,
                     url: page.url(),
                     title: await page.title(),
                   },
