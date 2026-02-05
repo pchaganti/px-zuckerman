@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMCallParams, LLMResponse } from "./types.js";
+import type { LLMProvider, LLMCallParams, LLMResponse, LLMModel } from "../types.js";
 
 /**
  * Mock LLM provider for testing
@@ -6,6 +6,7 @@ import type { LLMProvider, LLMCallParams, LLMResponse } from "./types.js";
  */
 export class MockLLMProvider implements LLMProvider {
   name = "mock";
+  model: LLMModel = { id: "mock-model", name: "Mock Model" };
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
     const { messages } = params;

@@ -3,8 +3,8 @@
  * Uses LLM to intelligently detect and extract important information from user messages
  */
 
-import type { LLMProvider } from "@server/world/providers/llm/types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
+import { LLMManager } from "@server/world/providers/llm/index.js";
 
 export interface ExtractedMemory {
   type: "fact" | "preference" | "decision" | "event" | "learning";
@@ -29,10 +29,12 @@ export interface ExtractionResult {
  * Extract important memories from a user message using LLM
  */
 export async function extractMemoriesFromMessage(
-  provider: LLMProvider,
   userMessage: string,
   conversationContext?: string
 ): Promise<ExtractionResult> {
+  // Select model for memory extraction (fastCheap for efficiency)
+  const llmManager = LLMManager.getInstance();
+  const model = await llmManager.fastCheap();
   const systemPrompt = `You are the part of the brain that estimates what information is important enough to remember. Like the hippocampus and prefrontal cortex working together, you evaluate incoming information and determine what should be stored in memory for future recall.
 
 You assess and categorize:
@@ -85,15 +87,10 @@ Return ONLY valid JSON object, no other text.`;
   ];
 
   try {
-    // Try to use a smaller/faster model for extraction if available
-    // Fallback to default model if specific model not available
-    let extractionModel = { id: "gpt-4o-mini" };
-    
-    const response = await provider.call({
+    const response = await model.call({
       messages,
       temperature: 0.3, // Low temperature for consistent extraction
       maxTokens: 500, // Small response for extraction
-      model: extractionModel,
     });
 
     const content = response.content.trim();

@@ -40,7 +40,7 @@ export function LLMProviderStep({
         },
       });
     },
-    autoFetchModels: true,
+    autoFetchModels: false,
   });
 
   const handleProviderChange = (provider: "anthropic" | "openai" | "openrouter" | "mock") => {
@@ -54,21 +54,6 @@ export function LLMProviderStep({
       },
     });
   };
-
-  const handleModelChange = (modelId: string) => {
-    const model = llmProviderHook.availableModels.find(m => m.id === modelId);
-    if (model) {
-      onUpdate({
-        llmProvider: {
-          ...state.llmProvider,
-          model,
-        },
-      });
-    }
-  };
-
-  // Get top 3 models for selection
-  const topModels = llmProviderHook.availableModels.slice(0, 3);
 
   return (
     <div className="max-w-[800px] mx-auto space-y-6">
@@ -116,7 +101,7 @@ export function LLMProviderStep({
             }`}>
               <RadioGroupItem value="openai" id="openai" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-semibold text-sm text-[#c9d1d9]">OpenAI (GPT-4o)</div>
+                <div className="font-semibold text-sm text-[#c9d1d9]">OpenAI</div>
                 <div className="text-xs text-[#8b949e]">
                   Highly capable and widely used.
                 </div>
@@ -234,43 +219,6 @@ export function LLMProviderStep({
               )}
             </div>
 
-            {state.llmProvider.validated && topModels.length > 0 && (
-              <div className="space-y-2 pt-4 border-t border-[#30363d]">
-                <Label className="text-sm font-semibold text-[#c9d1d9]">Choose Model</Label>
-                <p className="text-xs text-[#8b949e]">
-                  Select one of the top models for this provider
-                </p>
-                <RadioGroup
-                  value={state.llmProvider.model?.id || ""}
-                  onValueChange={handleModelChange}
-                  className="space-y-2"
-                >
-                  {topModels.map((model) => (
-                    <label
-                      key={model.id}
-                      className={`flex items-start gap-3 p-3 rounded-md border cursor-pointer transition-all ${
-                        state.llmProvider.model?.id === model.id
-                          ? "border-[#1f6feb] bg-[#1f6feb]/5"
-                          : "border-[#30363d] hover:border-[#8b949e] bg-[#161b22]"
-                      }`}
-                    >
-                      <RadioGroupItem value={model.id} id={model.id} className="mt-1" />
-                      <div className="flex-1 space-y-1">
-                        <div className="font-semibold text-sm text-[#c9d1d9]">{model.name}</div>
-                        <div className="text-xs text-[#8b949e]">{model.id}</div>
-                      </div>
-                    </label>
-                  ))}
-                </RadioGroup>
-              </div>
-            )}
-
-            {state.llmProvider.validated && llmProviderHook.isLoadingModels && (
-              <div className="flex items-center gap-2 text-sm text-[#8b949e] pt-4 border-t border-[#30363d]">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Loading available models...</span>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -297,7 +245,7 @@ export function LLMProviderStep({
           onClick={onNext}
           disabled={
             !state.llmProvider.provider ||
-            (state.llmProvider.provider !== "mock" && (!state.llmProvider.validated || !state.llmProvider.model))
+            (state.llmProvider.provider !== "mock" && !state.llmProvider.validated)
           }
           className="bg-[#238636] hover:bg-[#2ea043] text-white border-[#238636]"
         >

@@ -3,19 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, Eye, EyeOff, ChevronDown, ChevronUp } from "lucide-react";
 
 interface LLMModel {
   id: string;
   name: string;
 }
+
+type ModelTrait = "fastCheap" | "cheap" | "fast" | "highQuality" | "largeContext";
 
 interface LLMViewProps {
   llmProvider: {
@@ -28,23 +23,34 @@ interface LLMViewProps {
   testingApiKey: boolean;
   availableModels: LLMModel[];
   isLoadingModels: boolean;
+  traitMappings?: Record<string, Record<ModelTrait, string>>;
   onProviderChange: (provider: "anthropic" | "openai" | "openrouter" | "mock") => void;
   onApiKeyChange: (apiKey: string) => void;
-  onModelChange: (model: LLMModel) => void;
   onTestApiKey: () => void;
+  onTraitMappingChange?: (provider: string, trait: ModelTrait, modelId: string) => void;
 }
+
+const TRAIT_LABELS: Record<ModelTrait, string> = {
+  fastCheap: "Fast & Cheap",
+  cheap: "Cheap",
+  fast: "Fast",
+  highQuality: "High Quality",
+  largeContext: "Large Context",
+};
 
 export function LLMView({
   llmProvider,
   testingApiKey,
   availableModels,
   isLoadingModels,
+  traitMappings,
   onProviderChange,
   onApiKeyChange,
-  onModelChange,
   onTestApiKey,
+  onTraitMappingChange,
 }: LLMViewProps) {
   const [showApiKey, setShowApiKey] = useState(false);
+  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
   return (
     <React.Fragment>
@@ -83,7 +89,7 @@ export function LLMView({
             }`}>
               <RadioGroupItem value="openai" id="openai" className="mt-1" />
               <div className="flex-1 space-y-1">
-                <div className="font-semibold text-sm text-foreground">OpenAI (GPT-4o)</div>
+                <div className="font-semibold text-sm text-foreground">OpenAI</div>
                 <div className="text-xs text-muted-foreground">
                   Highly capable and widely used.
                 </div>
@@ -192,38 +198,6 @@ export function LLMView({
                 </div>
               )}
             </div>
-
-            {availableModels.length > 0 && (
-              <div className="space-y-2">
-                <Label htmlFor="model-select" className="text-sm font-semibold text-foreground">
-                  Model
-                </Label>
-                <Select
-                  value={llmProvider.model?.id || ""}
-                  onValueChange={(modelId) => {
-                    const model = availableModels.find(m => m.id === modelId);
-                    if (model) {
-                      onModelChange(model);
-                    }
-                  }}
-                  disabled={isLoadingModels}
-                >
-                  <SelectTrigger id="model-select" className="w-full">
-                    <SelectValue placeholder={isLoadingModels ? "Loading models..." : "Select a model"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableModels.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.name} <span className="text-muted-foreground">({model.id})</span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Choose the specific model to use for this provider.
-                </p>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -236,6 +210,64 @@ export function LLMView({
             <div className="text-muted-foreground">Using a mock provider for testing. Real AI responses will be simulated.</div>
           </div>
         </div>
+      )}
+
+      {llmProvider.provider && llmProvider.provider !== "mock" && traitMappings && Object.keys(traitMappings).length > 0 && (
+        <>
+          <div className="border-t border-border my-6"></div>
+          <div className="border border-border rounded-md bg-card">
+            <button
+              onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
+              className="w-full px-6 py-4 border-b border-border flex items-center justify-between hover:bg-accent/50 transition-colors"
+            >
+              <div className="text-left">
+                <h2 className="text-base font-semibold text-foreground">Advanced</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Model Trait Configuration
+                </p>
+              </div>
+              {isAdvancedOpen ? (
+                <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              ) : (
+                <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              )}
+            </button>
+            {isAdvancedOpen && (
+              <div className="px-6 py-4 space-y-4">
+                {(["anthropic", "openai", "openrouter"] as const).map((provider) => {
+                  const providerTraits = traitMappings[provider];
+                  if (!providerTraits) return null;
+                  
+                  return (
+                    <div key={provider} className="space-y-3 pb-4 border-b border-border last:border-0 last:pb-0">
+                      <h3 className="text-sm font-semibold text-foreground capitalize">{provider}</h3>
+                      <div className="grid grid-cols-1 gap-3">
+                        {(["fastCheap", "cheap", "fast", "highQuality", "largeContext"] as ModelTrait[]).map((trait) => (
+                          <div key={trait} className="space-y-1">
+                            <Label className="text-xs text-muted-foreground">{TRAIT_LABELS[trait]}</Label>
+                            <Input
+                              value={providerTraits[trait] || ""}
+                              onChange={(e) => {
+                                if (onTraitMappingChange) {
+                                  onTraitMappingChange(provider, trait, e.target.value);
+                                }
+                              }}
+                              placeholder="Model ID"
+                              className="text-sm"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+                <p className="text-xs text-muted-foreground pt-2">
+                  These settings control which models are selected when using trait-based selection methods like fastCheap(), cheap(), etc.
+                </p>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </React.Fragment>
   );

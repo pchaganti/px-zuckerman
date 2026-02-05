@@ -1,8 +1,8 @@
 /**
  * Sleep mode - memory processing and consolidation
  * 
- * Sleep mode processes, summarizes, and consolidates memories before
- * the context window fills up, similar to how humans consolidate memories during sleep.
+ * Sleep mode processes, summarizes, and consolidates memories periodically,
+ * similar to how humans consolidate memories during sleep.
  */
 
 export * from "./types.js";

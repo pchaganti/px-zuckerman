@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMCallParams, LLMResponse } from "./types.js";
+import type { LLMProvider, LLMCallParams, LLMResponse, LLMModel } from "../types.js";
 import {
   toAnthropicRequest,
   fromAnthropicResponse,
@@ -12,14 +12,19 @@ import {
  */
 export class AnthropicProvider implements LLMProvider {
   name = "anthropic";
+  model: LLMModel;
   private apiKey: string;
   private baseUrl = "https://api.anthropic.com/v1";
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model: LLMModel) {
     if (!apiKey) {
       throw new Error("Anthropic API key is required");
     }
+    if (!model?.id) {
+      throw new Error("Model is required");
+    }
     this.apiKey = apiKey;
+    this.model = model;
   }
 
   async call(params: LLMCallParams): Promise<LLMResponse> {
@@ -28,14 +33,13 @@ export class AnthropicProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens,
-      model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;
 
     const requestBody = toAnthropicRequest({
       messages,
       systemPrompt,
-      model: model.id,
+      model: this.model.id,
       temperature,
       maxTokens,
       tools,
@@ -50,7 +54,7 @@ export class AnthropicProvider implements LLMProvider {
       };
 
       // Add beta header for sonnet models with extended context
-      if (model.id.startsWith("claude-sonnet-")) {
+      if (this.model.id.startsWith("claude-sonnet-")) {
         headers["anthropic-beta"] = "context-1m-2025-08-07";
       }
 
@@ -98,14 +102,13 @@ export class AnthropicProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens,
-      model = { id: "claude-3-5-sonnet-20241022" },
       tools,
     } = params;
 
     const requestBody = toAnthropicRequest({
       messages,
       systemPrompt,
-      model: model.id,
+      model: this.model.id,
       temperature,
       maxTokens,
       tools,
@@ -120,7 +123,7 @@ export class AnthropicProvider implements LLMProvider {
       };
 
       // Add beta header for sonnet models with extended context
-      if (model.id.startsWith("claude-sonnet-")) {
+      if (this.model.id.startsWith("claude-sonnet-")) {
         headers["anthropic-beta"] = "context-1m-2025-08-07";
       }
 

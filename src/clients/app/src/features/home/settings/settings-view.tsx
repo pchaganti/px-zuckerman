@@ -56,6 +56,7 @@ export function SettingsView({
     isResetting,
     availableModels,
     isLoadingModels,
+    traitMappings,
     updateSettings,
     saveSettings,
     testConnection,
@@ -66,6 +67,7 @@ export function SettingsView({
     handleEnableAllTools,
     handleReset,
     setShowResetDialog,
+    handleTraitMappingChange,
   } = useSettings(gatewayClient, undefined, startServer, stopServer);
 
   useEffect(() => {
@@ -95,7 +97,7 @@ export function SettingsView({
   const tabs: Array<{ id: SettingsTab; label: string; icon: React.ReactNode }> = [
     { id: "gateway", label: "Gateway", icon: <Server className="h-4 w-4" /> },
     { id: "channels", label: "Channels", icon: <MessageSquare className="h-4 w-4" /> },
-    { id: "llm", label: "LLM Provider", icon: <Brain className="h-4 w-4" /> },
+    { id: "llm", label: "LLM", icon: <Brain className="h-4 w-4" /> },
     { id: "security", label: "Security", icon: <Shield className="h-4 w-4" /> },
     { id: "advanced", label: "Advanced", icon: <SettingsIcon className="h-4 w-4" /> },
   ];
@@ -175,6 +177,7 @@ export function SettingsView({
                 testingApiKey={testingApiKey}
                 availableModels={availableModels}
                 isLoadingModels={isLoadingModels}
+                traitMappings={traitMappings}
                 onProviderChange={handleProviderChange}
                 onApiKeyChange={(apiKey) =>
                   updateSettings("llmProvider", {
@@ -182,8 +185,8 @@ export function SettingsView({
                     validated: false,
                   })
                 }
-                onModelChange={handleModelChange}
                 onTestApiKey={testApiKey}
+                onTraitMappingChange={handleTraitMappingChange}
               />
             )}
 

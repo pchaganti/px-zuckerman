@@ -1,4 +1,4 @@
-import type { LLMMessage, LLMTool } from "../types.js";
+import type { LLMMessage, LLMTool } from "../../types.js";
 
 export interface OpenAIRequest {
   model: string;

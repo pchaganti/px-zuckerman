@@ -11,15 +11,12 @@ export type CompressionStrategy =
 
 export interface SleepConfig {
   enabled: boolean;
-  threshold: number;              // Default: 0.8 (80%)
   cooldownMinutes: number;         // Default: 5 minutes
   minMessagesToSleep: number;      // Default: 10 messages
   keepRecentMessages: number;      // Default: 10
   compressionStrategy: CompressionStrategy;
   prompt: string;                  // Sleep mode prompt
   systemPrompt: string;            // Sleep mode system prompt
-  reserveTokensFloor: number;     // Reserve tokens
-  softThresholdTokens: number;     // Soft threshold buffer
 }
 
 export interface ContextMessage {

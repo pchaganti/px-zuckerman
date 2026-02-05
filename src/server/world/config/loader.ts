@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ZuckermanConfig } from "./types.js";
+import type { ZuckermanConfig, ModelTrait } from "./types.js";
 import { getConfigPath, getAgentWorkspaceDir, getZuckermanBaseDir } from "@server/world/homedir/paths.js";
 
 // Re-export for backward compatibility
@@ -33,10 +33,52 @@ const defaultConfig: ZuckermanConfig = {
   },
 };
 
+// Default trait mappings to initialize in config
+const defaultTraitMappings: Record<string, Record<ModelTrait, string>> = {
+  anthropic: {
+    fastCheap: "claude-haiku-4-5",
+    cheap: "claude-haiku-4-5",
+    fast: "claude-haiku-4-5",
+    highQuality: "claude-opus-4-5-20251101",
+    largeContext: "claude-sonnet-4-5",
+  },
+  openai: {
+    fastCheap: "gpt-4o-mini",
+    cheap: "gpt-4o-mini",
+    fast: "gpt-4o-mini",
+    highQuality: "gpt-5.2",
+    largeContext: "gpt-5.2",
+  },
+  openrouter: {
+    fastCheap: "deepseek/deepseek-chat",
+    cheap: "deepseek/deepseek-chat",
+    fast: "deepseek/deepseek-chat",
+    highQuality: "anthropic/claude-opus-4-5-20251101",
+    largeContext: "openai/gpt-5.2",
+  },
+};
+
 export async function loadConfig(): Promise<ZuckermanConfig> {
   if (!existsSync(CONFIG_PATH)) {
-    await saveConfig(defaultConfig);
-    return defaultConfig;
+    // Initialize config with default trait mappings
+    const configWithTraits: ZuckermanConfig = {
+      ...defaultConfig,
+      llm: {
+        anthropic: {
+          defaultModel: "claude-sonnet-4-5",
+          traits: defaultTraitMappings.anthropic,
+        },
+        openai: {
+          defaultModel: "gpt-5.2",
+          traits: defaultTraitMappings.openai,
+        },
+        openrouter: {
+          traits: defaultTraitMappings.openrouter,
+        },
+      },
+    };
+    await saveConfig(configWithTraits);
+    return configWithTraits;
   }
 
   try {
@@ -49,6 +91,31 @@ export async function loadConfig(): Promise<ZuckermanConfig> {
     }
     if (!config.routing) {
       config.routing = defaultConfig.routing;
+    }
+    
+    // Initialize LLM config if it doesn't exist
+    if (!config.llm) {
+      config.llm = {};
+    }
+    
+    // Initialize provider-specific configs
+    for (const provider of ["anthropic", "openai", "openrouter"] as const) {
+      if (!config.llm[provider]) {
+        config.llm[provider] = {};
+      }
+      if (!config.llm[provider]?.traits) {
+        config.llm[provider]!.traits = defaultTraitMappings[provider];
+        await saveConfig(config);
+      }
+      // Set default models if not present
+      if (provider === "anthropic" && !config.llm[provider]?.defaultModel) {
+        config.llm[provider]!.defaultModel = "claude-sonnet-4-5";
+        await saveConfig(config);
+      }
+      if (provider === "openai" && !config.llm[provider]?.defaultModel) {
+        config.llm[provider]!.defaultModel = "gpt-5.2";
+        await saveConfig(config);
+      }
     }
     
     return config;

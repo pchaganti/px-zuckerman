@@ -28,7 +28,6 @@ export interface LLMCallParams {
   systemPrompt?: string;
   temperature?: number;
   maxTokens?: number;
-  model?: LLMModel;
   tools?: LLMTool[];
 }
 
@@ -50,6 +49,7 @@ export interface LLMResponse {
 
 export interface LLMProvider {
   name: string;
+  model: LLMModel;
   call(params: LLMCallParams): Promise<LLMResponse>;
   stream?(params: LLMCallParams): AsyncIterable<string>;
 }

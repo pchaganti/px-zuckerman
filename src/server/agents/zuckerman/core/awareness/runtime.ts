@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRuntime, AgentRunParams, AgentRunResult, StreamCallback } from "@server/world/runtime/agents/types.js";
-import type { LLMMessage, LLMTool, LLMModel } from "@server/world/providers/llm/types.js";
+import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
+import type { LLMModel as LLMModelType } from "@server/world/providers/llm/types.js";
 import type { ConversationId } from "@server/agents/zuckerman/conversations/types.js";
 import type { SecurityContext } from "@server/world/execution/security/types.js";
 import { loadConfig } from "@server/world/config/index.js";
@@ -8,8 +9,7 @@ import { ConversationManager } from "@server/agents/zuckerman/conversations/inde
 import { ZuckermanToolRegistry } from "@server/agents/zuckerman/tools/registry.js";
 import type { ToolExecutionContext } from "@server/agents/zuckerman/tools/terminal/index.js";
 import { truncateOutput } from "@server/agents/zuckerman/tools/truncation.js";
-import { LLMProviderService } from "@server/world/providers/llm/service/selector.js";
-import { selectModel } from "@server/world/providers/llm/service/model-selector.js";
+import { LLMManager, LLMModel } from "@server/world/providers/llm/index.js";
 import { PromptLoader, type LoadedPrompts } from "../identity/identity-loader.js";
 import { agentDiscovery } from "@server/agents/discovery.js";
 import {
@@ -19,26 +19,35 @@ import { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manag
 import { runSleepModeIfNeeded } from "@server/agents/zuckerman/sleep/index.js";
 import { activityRecorder } from "@server/world/activity/index.js";
 import { resolveMemorySearchConfig } from "@server/agents/zuckerman/core/memory/config.js";
+import { ExecutiveController, makeAllocationDecision } from "../attention/index.js";
+import type { MemoryType } from "../memory/types.js";
 
 export class ZuckermanAwareness implements AgentRuntime {
   readonly agentId = "zuckerman";
   
   private promptLoader: PromptLoader;
-  private providerService: LLMProviderService;
+  private llmManager: LLMManager;
   private conversationManager: ConversationManager;
   private toolRegistry: ZuckermanToolRegistry;
   private dbInitialized: boolean = false;
   private memoryManager: UnifiedMemoryManager | null = null;
+  private attentionController: ExecutiveController;
   
   // Load prompts from agent's core directory (where markdown files are)
   private readonly agentDir: string;
 
-  constructor(conversationManager?: ConversationManager, providerService?: LLMProviderService, promptLoader?: PromptLoader) {
+  constructor(conversationManager?: ConversationManager, llmManager?: LLMManager, promptLoader?: PromptLoader) {
     this.conversationManager = conversationManager || new ConversationManager(this.agentId);
     // Initialize tool registry without conversationId - will be set per-run
     this.toolRegistry = new ZuckermanToolRegistry();
-    this.providerService = providerService || new LLMProviderService();
+    this.llmManager = llmManager || LLMManager.getInstance();
     this.promptLoader = promptLoader || new PromptLoader();
+    
+    // Load config for fastModelId - will be set async on first use
+    this.attentionController = new ExecutiveController({
+      enabled: true,
+      focusPersistence: true,
+    });
     
     // Get agent directory from discovery service
     const metadata = agentDiscovery.getMetadata(this.agentId);
@@ -122,7 +131,7 @@ export class ZuckermanAwareness implements AgentRuntime {
   }
 
   async run(params: AgentRunParams): Promise<AgentRunResult> {
-    const { conversationId, message, thinkingLevel = "off", temperature, model, securityContext, stream } = params;
+    const { conversationId, message, thinkingLevel = "off", temperature, securityContext, stream } = params;
     const runId = randomUUID();
 
     // Record agent run start
@@ -148,9 +157,9 @@ export class ZuckermanAwareness implements AgentRuntime {
       // Update tool registry conversation ID for batch tool context
       this.toolRegistry.setConversationId(conversationId);
 
-      // Get LLM provider and config
+      // Get LLM model and config
       const config = await loadConfig();
-      const provider = await this.providerService.selectProvider(config);
+      const defaultModel = await this.llmManager.fastCheap();
 
       // Resolve homedir directory
       const homedirDir = resolveAgentHomedirDir(config, this.agentId);
@@ -159,13 +168,11 @@ export class ZuckermanAwareness implements AgentRuntime {
       this.initializeMemoryManager(homedirDir);
 
       // Check if sleep mode is needed before processing the message
-      // This processes and consolidates memories if context window is getting full
-      const modelForSleep = model || selectModel(provider, config);
+      // This processes and consolidates memories periodically
       await runSleepModeIfNeeded({
         config,
         conversationManager: this.conversationManager,
         conversationId,
-        modelId: modelForSleep?.id,
         agentId: this.agentId,
         homedirDir,
       });
@@ -176,16 +183,45 @@ export class ZuckermanAwareness implements AgentRuntime {
       // ensuring we always have the latest semantic memories
       const systemPrompt = await this.buildSystemPrompt(prompts, homedirDir);
 
-      // Retrieve relevant memories based on the user message
+      // Process attention - analyze focus and urgency
       let retrievedMemoriesText = "";
       try {
-        retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
-          query: message,
-          types: ["semantic", "episodic", "procedural"],
-          limit: 10,
-        });
+        const attentionState = await this.attentionController.processMessage(
+          message,
+          this.agentId,
+          conversationId
+        );
+
+        if (attentionState) {
+          // Get allocation decision based on attention state
+          const allocation = makeAllocationDecision(attentionState);
+          
+          // Retrieve memories based on attention-guided allocation
+          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
+            query: attentionState.orienting.topic + (attentionState.orienting.task ? ` ${attentionState.orienting.task}` : ""),
+            types: allocation.memoryTypes as MemoryType[],
+            limit: allocation.memoryLimit,
+          });
+        } else {
+          // Fallback to default behavior if attention system fails
+          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
+            query: message,
+            types: ["semantic", "episodic", "procedural"],
+            limit: 10,
+          });
+        }
       } catch (memoryError) {
         console.warn(`[ZuckermanRuntime] Memory retrieval failed:`, memoryError);
+        // Fallback on error
+        try {
+          retrievedMemoriesText = await this.getMemoryManager().getRelevantMemoryContext({
+            query: message,
+            types: ["semantic", "episodic", "procedural"],
+            limit: 10,
+          });
+        } catch (fallbackError) {
+          console.warn(`[ZuckermanRuntime] Fallback memory retrieval also failed:`, fallbackError);
+        }
       }
 
       // Prepare messages
@@ -215,14 +251,11 @@ export class ZuckermanAwareness implements AgentRuntime {
         const conversationContext = conversation 
           ? conversation.messages.slice(-3).map(m => m.content).join("\n")
           : undefined;
-        await this.getMemoryManager().onNewMessage(provider, message, conversationId, conversationContext);
+        await this.getMemoryManager().onNewMessage(message, conversationId, conversationContext);
       } catch (extractionError) {
         // Don't fail the main flow if extraction fails
         console.warn(`[ZuckermanRuntime] Memory extraction failed:`, extractionError);
       }
-
-      // Select model (thinkingLevel is not a model override - it's a separate parameter)
-      const selectedModel = model || selectModel(provider, config);
 
       // Prepare tools for LLM
       const llmTools: LLMTool[] = this.toolRegistry.list().map(t => ({
@@ -230,11 +263,10 @@ export class ZuckermanAwareness implements AgentRuntime {
         function: t.definition
       }));
 
-      // Run LLM with streaming support
+      // Run LLM with streaming support (model selected internally)
       const result = await this.callLLMWithStreaming({
-        provider,
+        model: defaultModel,
         messages,
-        model: selectedModel,
         temperature,
         tools: llmTools,
         stream,
@@ -250,7 +282,6 @@ export class ZuckermanAwareness implements AgentRuntime {
           toolCalls: result.toolCalls,
           securityContext,
           stream,
-          model: selectedModel,
           temperature,
           llmTools,
           homedirDir,
@@ -313,18 +344,17 @@ export class ZuckermanAwareness implements AgentRuntime {
    * Call LLM with streaming support when stream callback is provided
    */
   private async callLLMWithStreaming(params: {
-    provider: any;
+    model: LLMModel;
     messages: LLMMessage[];
-    model?: LLMModel;
     temperature?: number;
     tools: LLMTool[];
     stream?: StreamCallback;
     runId: string;
   }): Promise<{ content: string; toolCalls?: any[]; tokensUsed?: { total: number } }> {
-    const { provider, messages, model, temperature, tools, stream, runId } = params;
+    const { model, messages, temperature, tools, stream, runId } = params;
 
-    // Try streaming first if requested and provider supports it
-    if (stream && provider.stream) {
+    // Try streaming first if requested and model supports it
+    if (stream) {
       let accumulatedContent = "";
       let streamingSucceeded = false;
       
@@ -334,9 +364,8 @@ export class ZuckermanAwareness implements AgentRuntime {
         // TODO: Enhance providers to support streaming with tool calls
         if (tools.length === 0) {
           // Pure streaming - no tools needed
-          for await (const token of provider.stream({
+          for await (const token of model.stream({
             messages,
-            model,
             temperature,
             tools: [],
           })) {
@@ -374,9 +403,8 @@ export class ZuckermanAwareness implements AgentRuntime {
     // Non-streaming path:
     // - When streaming failed or not supported
     // - When streaming not requested
-    const result = await provider.call({
+    const result = await model.call({
       messages,
-      model,
       temperature,
       tools,
     });
@@ -427,12 +455,14 @@ export class ZuckermanAwareness implements AgentRuntime {
     toolCalls: any[];
     securityContext: SecurityContext;
     stream?: StreamCallback;
-    model?: LLMModel;
     temperature?: number;
     llmTools: LLMTool[];
     homedirDir: string;
   }): Promise<AgentRunResult> {
-    const { conversationId, runId, messages, toolCalls, securityContext, stream, model, temperature, llmTools, homedirDir } = params;
+    const { conversationId, runId, messages, toolCalls, securityContext, stream, temperature, llmTools, homedirDir } = params;
+    
+    // Select model for tool calls (fastCheap for efficiency)
+    const model = await this.llmManager.fastCheap();
     
     // Add assistant message with tool calls to history
     messages.push({
@@ -613,12 +643,9 @@ export class ZuckermanAwareness implements AgentRuntime {
     }
 
     // Run LLM again with tool results
-    const config = await loadConfig();
-    const provider = await this.providerService.selectProvider(config);
     const result = await this.callLLMWithStreaming({
-      provider,
-      messages,
       model,
+      messages,
       temperature,
       tools: llmTools,
       stream,
@@ -634,7 +661,6 @@ export class ZuckermanAwareness implements AgentRuntime {
         toolCalls: result.toolCalls,
         securityContext,
         stream,
-        model,
         temperature,
         llmTools,
         homedirDir: params.homedirDir,
@@ -672,7 +698,7 @@ export class ZuckermanAwareness implements AgentRuntime {
 
   clearCache(): void {
     this.promptCacheClear();
-    this.providerService.clearCache();
+    this.llmManager.clearCache();
   }
 
   private promptCacheClear(): void {

@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMCallParams, LLMResponse, LLMMessage } from "./types.js";
+import type { LLMProvider, LLMCallParams, LLMResponse, LLMMessage, LLMModel } from "../types.js";
 import {
   toOpenAIRequest,
   fromOpenAIResponse,
@@ -12,15 +12,20 @@ import {
  */
 export class OpenAIProvider implements LLMProvider {
   name = "openai";
+  model: LLMModel;
   protected apiKey: string;
   protected baseUrl = "https://api.openai.com/v1";
   protected customHeaders?: () => HeadersInit;
 
-  constructor(apiKey: string, options?: { baseUrl?: string; customHeaders?: () => HeadersInit }) {
+  constructor(apiKey: string, model: LLMModel, options?: { baseUrl?: string; customHeaders?: () => HeadersInit }) {
     if (!apiKey) {
       throw new Error("OpenAI API key is required");
     }
+    if (!model?.id) {
+      throw new Error("Model is required");
+    }
     this.apiKey = apiKey;
+    this.model = model;
     if (options?.baseUrl) {
       this.baseUrl = options.baseUrl;
     }
@@ -46,14 +51,13 @@ export class OpenAIProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens,
-      model = { id: "gpt-4o" },
       tools,
     } = params;
 
     const requestBody = toOpenAIRequest({
       messages,
       systemPrompt,
-      model: model.id,
+      model: this.model.id,
       temperature,
       maxTokens,
       tools,
@@ -102,14 +106,13 @@ export class OpenAIProvider implements LLMProvider {
       systemPrompt,
       temperature = 1.0,
       maxTokens,
-      model = { id: "gpt-4o" },
       tools,
     } = params;
 
     const requestBody = toOpenAIRequest({
       messages,
       systemPrompt,
-      model: model.id,
+      model: this.model.id,
       temperature,
       maxTokens,
       tools,

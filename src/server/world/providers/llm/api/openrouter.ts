@@ -1,4 +1,4 @@
-import type { LLMProvider, LLMCallParams, LLMResponse } from "./types.js";
+import type { LLMProvider, LLMCallParams, LLMResponse, LLMModel } from "../types.js";
 import { OpenAIProvider } from "./openai.js";
 
 /**
@@ -7,14 +7,19 @@ import { OpenAIProvider } from "./openai.js";
  */
 export class OpenRouterProvider implements LLMProvider {
   name = "openrouter";
+  model: LLMModel;
   private openaiProvider: OpenAIProvider;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, model: LLMModel) {
     if (!apiKey) {
       throw new Error("OpenRouter API key is required");
     }
+    if (!model?.id) {
+      throw new Error("Model is required");
+    }
+    this.model = model;
     // Create OpenAI provider with OpenRouter's endpoint and custom headers
-    this.openaiProvider = new OpenAIProvider(apiKey, {
+    this.openaiProvider = new OpenAIProvider(apiKey, model, {
       baseUrl: "https://openrouter.ai/api/v1",
       customHeaders: () => ({
         "HTTP-Referer": process.env.OPENROUTER_HTTP_REFERER || "https://github.com/zuckerman",

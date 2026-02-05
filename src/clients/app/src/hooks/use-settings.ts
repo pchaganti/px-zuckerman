@@ -30,6 +30,8 @@ export interface ToolRestrictions {
 // LLMModel is now exported from use-llm-provider
 export type { LLMModel } from "./use-llm-provider";
 
+type ModelTrait = "fastCheap" | "cheap" | "fast" | "highQuality" | "largeContext";
+
 export interface UseSettingsReturn {
   // State
   settings: SettingsState;
@@ -42,6 +44,7 @@ export interface UseSettingsReturn {
   isResetting: boolean;
   availableModels: LLMModel[];
   isLoadingModels: boolean;
+  traitMappings?: Record<string, Record<ModelTrait, string>>;
 
   // Actions
   updateSettings: <K extends keyof SettingsState>(
@@ -112,6 +115,8 @@ export function useSettings(
   });
   const [isLoadingTools, setIsLoadingTools] = useState(false);
 
+  const [traitMappings, setTraitMappings] = useState<Record<string, Record<ModelTrait, string>>>({});
+
   // Load API keys from Electron API on mount
   useEffect(() => {
     if (window.electronAPI) {
@@ -157,6 +162,17 @@ export function useSettings(
           const config = (response.result as { config: any }).config;
           const defaultProvider = config?.agents?.defaults?.defaultProvider;
           const defaultModel = config?.agents?.defaults?.defaultModel;
+
+          // Load trait mappings from config
+          const mappings: Record<string, Record<ModelTrait, string>> = {};
+          for (const provider of ["anthropic", "openai", "openrouter"] as const) {
+            if (config?.llm?.[provider]?.traits) {
+              mappings[provider] = config.llm[provider].traits!;
+            }
+          }
+          if (Object.keys(mappings).length > 0) {
+            setTraitMappings(mappings);
+          }
 
           if (!defaultProvider) return;
 
@@ -632,6 +648,55 @@ export function useSettings(
     }
   }, [gatewayClient, settings.gateway, startServer, stopServer]);
 
+  const handleTraitMappingChange = useCallback(async (
+    provider: string,
+    trait: ModelTrait,
+    modelId: string
+  ) => {
+    if (!gatewayClient?.isConnected()) return;
+
+    // Update local state immediately
+    setTraitMappings((prev) => ({
+      ...prev,
+      [provider]: {
+        ...prev[provider],
+        [trait]: modelId,
+      },
+    }));
+
+    // Save to config
+    try {
+      const updates: any = {
+        llm: {
+          [provider]: {
+            traits: {
+              [trait]: modelId,
+            },
+          },
+        },
+      };
+
+      const response = await gatewayClient.request("config.update", { updates });
+      if (!response.ok) {
+        console.error(`Failed to update trait mapping:`, response.error);
+        // Revert on error - reload from config
+        const configResponse = await gatewayClient.request("config.get", {});
+        if (configResponse.ok && configResponse.result) {
+          const config = (configResponse.result as { config: any }).config;
+          const mappings: Record<string, Record<ModelTrait, string>> = {};
+          for (const p of ["anthropic", "openai", "openrouter"] as const) {
+            if (config?.llm?.[p]?.traits) {
+              mappings[p] = config.llm[p].traits!;
+            }
+          }
+          setTraitMappings(mappings);
+        }
+      }
+    } catch (error) {
+      console.error("Error updating trait mapping:", error);
+    }
+  }, [gatewayClient]);
+
   return {
     settings,
     hasChanges,
@@ -643,11 +708,13 @@ export function useSettings(
     isResetting,
     availableModels: llmProviderHook.availableModels,
     isLoadingModels: llmProviderHook.isLoadingModels,
+    traitMappings,
     updateSettings,
     saveSettings,
     testConnection,
     validateApiKey,
     testApiKey,
+    handleTraitMappingChange,
     handleProviderChange,
     handleModelChange,
     handleToolToggle,

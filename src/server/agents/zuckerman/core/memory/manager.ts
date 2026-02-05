@@ -23,7 +23,6 @@ import type {
 } from "./types.js";
 
 import { extractMemoriesFromMessage } from "./memory-classifier.js";
-import type { LLMProvider } from "@server/world/providers/llm/types.js";
 import type { ResolvedMemorySearchConfig } from "./config.js";
 import { initializeDatabase } from "./retrieval/db.js";
 import { existsSync, readFileSync } from "node:fs";
@@ -391,14 +390,12 @@ export class UnifiedMemoryManager implements MemoryManager {
    * This is called by the runtime when a new user message arrives
    */
   async onNewMessage(
-    llmProvider: LLMProvider,
     userMessage: string,
     conversationId?: string,
     conversationContext?: string
   ): Promise<void> {
     try {
       const extractionResult = await extractMemoriesFromMessage(
-        llmProvider,
         userMessage,
         conversationContext
       );

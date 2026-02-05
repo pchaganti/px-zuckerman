@@ -22,14 +22,11 @@ export interface StreamEvent {
 
 export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
-import type { LLMModel } from "@server/world/providers/llm/types.js";
-
 export interface AgentRunParams {
   conversationId: ConversationId;
   message: string;
   thinkingLevel?: ThinkingLevel;
   temperature?: number;
-  model?: LLMModel;
   securityContext: SecurityContext;
   stream?: StreamCallback;
 }

@@ -115,18 +115,23 @@ export interface ChannelsConfig {
   imessage?: IMessageConfig;
 }
 
+export type ModelTrait = "fastCheap" | "cheap" | "fast" | "highQuality" | "largeContext";
+
 export interface LLMConfig {
   anthropic?: {
     apiKey?: string;
     defaultModel?: string;
+    traits?: Record<ModelTrait, string>;
   };
   openai?: {
     apiKey?: string;
     defaultModel?: string;
+    traits?: Record<ModelTrait, string>;
   };
   openrouter?: {
     apiKey?: string;
     defaultModel?: string;
+    traits?: Record<ModelTrait, string>;
   };
 }
 

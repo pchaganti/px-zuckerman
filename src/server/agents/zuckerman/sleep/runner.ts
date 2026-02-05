@@ -7,8 +7,9 @@ import { deriveConversationKey } from "../conversations/manager.js";
 import { loadConversationStore } from "../conversations/store.js";
 import type { ConversationEntry } from "../conversations/types.js";
 import type { ZuckermanConfig } from "@server/world/config/types.js";
+import { LLMManager } from "@server/world/providers/llm/index.js";
 import { resolveSleepConfig } from "./config.js";
-import { shouldSleep, resolveSleepContextWindowTokens } from "./trigger.js";
+import { shouldSleep } from "./trigger.js";
 import { processConversation } from "./processor.js";
 import { consolidateMemories } from "./consolidator.js";
 import { UnifiedMemoryManager } from "../core/memory/manager.js";
@@ -20,11 +21,10 @@ export async function runSleepModeIfNeeded(params: {
   config: ZuckermanConfig;
   conversationManager: ConversationManager;
   conversationId: string;
-  modelId?: string;
   agentId: string;
   homedirDir: string;
 }): Promise<ConversationEntry | undefined> {
-  const { config, conversationManager, conversationId, modelId, agentId, homedirDir } = params;
+  const { config, conversationManager, conversationId, agentId, homedirDir } = params;
 
   // Resolve sleep settings
   const sleepConfig = resolveSleepConfig({
@@ -35,6 +35,10 @@ export async function runSleepModeIfNeeded(params: {
   if (!sleepConfig) {
     return undefined; // Sleep disabled
   }
+
+  // Get large context model for sleep processing (available for future LLM-based processing)
+  const llmManager = LLMManager.getInstance();
+  const model = await llmManager.largeContext(config);
 
   // Get conversation entry to check token counts
   const conversation = conversationManager.getConversation(conversationId);
@@ -48,14 +52,8 @@ export async function runSleepModeIfNeeded(params: {
   const entry = store[conversationKey];
 
   // Check if sleep should run
-  const contextWindowTokens = resolveSleepContextWindowTokens({
-    modelId,
-    agentCfgContextTokens: config.agent?.contextTokens,
-  });
-
   const shouldRun = shouldSleep({
     entry,
-    contextWindowTokens,
     config: sleepConfig,
     conversationMessageCount: conversation.messages?.length,
   });
