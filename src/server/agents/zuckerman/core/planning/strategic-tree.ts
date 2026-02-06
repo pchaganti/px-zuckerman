@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { GoalTaskNode, GoalTaskTree, GoalStatus, TaskStatus } from "../types.js";
+import type { GoalTaskNode, GoalTaskTree, GoalStatus, TaskStatus } from "./types.js";
 
 export class TreeManager {
   private tree: GoalTaskTree;

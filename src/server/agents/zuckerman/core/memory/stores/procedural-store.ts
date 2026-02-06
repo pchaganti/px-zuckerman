@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { ProceduralMemory } from "../../types.js";
+import type { ProceduralMemory } from "../types.js";
 
 export interface ProceduralMemoryStorage {
   memories: ProceduralMemory[];

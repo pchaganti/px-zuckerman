@@ -5,11 +5,11 @@
 
 import type { GoalTaskNode, PlanningState, PlanningStats, ProcessQueueResult, PlanResult, TaskUrgency } from "./types.js";
 import type { MemoryManager } from "../memory/types.js";
-import type { TaskStep } from "./tactical/steps.js";
-import { StrategicManager } from "./strategic/index.js";
-import { TacticalExecutor, StepSequenceManager } from "./tactical/index.js";
-import { TaskSwitcher } from "./reactive/index.js";
-import { FallbackStrategyManager } from "./contingency/index.js";
+import type { TaskStep } from "./tactical-executor.js";
+import { StrategicManager } from "./strategic-manager.js";
+import { TacticalExecutor } from "./tactical-executor.js";
+import { TaskSwitcher } from "./reactive-switcher.js";
+import { FallbackStrategyManager } from "./contingency-manager.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 
 export class PlanningManager {
@@ -18,7 +18,6 @@ export class PlanningManager {
   private executor: TacticalExecutor;
   private switcher: TaskSwitcher;
   private fallbackManager: FallbackStrategyManager;
-  private stepManager: StepSequenceManager;
   private stats: PlanningStats;
   private llmManager: LLMManager;
   private memoryManager: MemoryManager | null = null;
@@ -30,7 +29,6 @@ export class PlanningManager {
     this.executor = new TacticalExecutor();
     this.switcher = new TaskSwitcher();
     this.fallbackManager = new FallbackStrategyManager();
-    this.stepManager = new StepSequenceManager();
     this.llmManager = LLMManager.getInstance();
     this.stats = {
       totalCompleted: 0,
@@ -57,16 +55,11 @@ export class PlanningManager {
   async plan(
     userMessage: string,
     urgency: TaskUrgency,
-    focus: null,
     conversationId?: string
   ): Promise<PlanResult> {
     try {
-
-      // Get current task before processing (to detect switches)
-      const previousTask = this.executor.getCurrentTask() || this.strategicManager.getActiveNode();
-
       // Decompose task into steps using tactical planning (LLM-based)
-      const steps = await this.stepManager.decomposeWithLLM(userMessage, urgency, null);
+      const steps = await this.executor.decomposeWithLLM(userMessage, urgency);
 
       // Add task to tree (always a task, not a goal for user messages)
       const taskId = this.strategicManager.createTask(userMessage, userMessage, urgency, 0.5, undefined).id;
@@ -78,7 +71,7 @@ export class PlanningManager {
       }
 
       // Process tree to decide what to execute (uses LLM internally)
-      const queueResult = await this.processTree(conversationId, userMessage);
+      const queueResult = await this.processTree(conversationId);
 
       // Handle no action case
       if (queueResult.type === "none") {
@@ -119,7 +112,7 @@ export class PlanningManager {
    * Returns ProcessQueueResult which can be a task or none
    * @internal Private method - use plan() instead
    */
-  private async processTree(conversationId?: string, originalUserMessage?: string): Promise<ProcessQueueResult> {
+  private async processTree(conversationId?: string): Promise<ProcessQueueResult> {
 
     // Get ready tasks from tree
     const readyTasks = this.strategicManager.getReadyTasks();
@@ -137,7 +130,6 @@ export class PlanningManager {
     // Use LLM to decide if should switch
     const nextNode = prioritized[0];
     let shouldSwitch = true;
-    let assessment = null;
     
     if (currentNode && nextNode) {
       if (currentNode.id === nextNode.id) {
@@ -146,7 +138,7 @@ export class PlanningManager {
       }
 
       // Use LLM to decide switching - automatically decides without user confirmation
-      assessment = await this.switcher.shouldSwitchWithLLM(
+      const assessment = await this.switcher.shouldSwitchWithLLM(
         currentNode,
         nextNode,
         null
@@ -294,25 +286,6 @@ export class PlanningManager {
   }
 
   /**
-   * Update task progress
-   * UPDATED: Uses tree structure
-   */
-  updateProgress(progress: number): boolean {
-    const currentNode = this.getCurrentTask();
-    if (!currentNode || currentNode.type !== "task") {
-      return false;
-    }
-
-    // Update in tree
-    this.strategicManager.updateProgress(currentNode.id, progress);
-    
-    // Update in executor
-    this.executor.updateProgress(currentNode, progress);
-    
-    return true;
-  }
-
-  /**
    * Complete current step (tactical planning)
    */
   completeCurrentStep(result?: unknown, conversationId?: string): boolean {
@@ -381,14 +354,6 @@ export class PlanningManager {
   }
 
   /**
-   * Check if current step requires confirmation
-   */
-  currentStepRequiresConfirmation(): boolean {
-    const step = this.executor.getCurrentStep();
-    return step?.requiresConfirmation || false;
-  }
-
-  /**
    * Handle step failure with contingency planning
    */
   async handleStepFailure(step: TaskStep, error: string, conversationId?: string): Promise<GoalTaskNode | null> {
@@ -442,16 +407,6 @@ export class PlanningManager {
     };
   }
 
-
-  /**
-   * Register fallback plan for a task
-   */
-  registerFallback(taskId: string, fallbackDescription: string, priority: number = 0.5): string {
-    return this.fallbackManager.registerFallback(taskId, fallbackDescription, priority);
-  }
-
-
-
   /**
    * Update statistics
    */
@@ -471,16 +426,4 @@ export class PlanningManager {
     }
   }
 
-  /**
-   * Cancel task
-   * UPDATED: Uses tree structure
-   */
-  cancelTask(taskId: string): boolean {
-    const cancelled = this.strategicManager.cancelTask(taskId);
-    if (cancelled) {
-      this.updateStats("cancelled", 0);
-      this.switcher.clearContext(taskId);
-    }
-    return cancelled;
-  }
 }

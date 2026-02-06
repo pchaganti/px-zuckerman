@@ -4,7 +4,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { WorkingMemory } from "../../types.js";
+import type { WorkingMemory } from "../types.js";
 
 export class WorkingMemoryStore {
   private memories = new Map<string, WorkingMemory>();

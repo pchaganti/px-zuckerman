@@ -276,7 +276,6 @@ export class ZuckermanAwareness implements AgentRuntime {
     const planResult = await this.planningManager.plan(
       message,
       "medium",
-      null,
       conversationId
     );
 

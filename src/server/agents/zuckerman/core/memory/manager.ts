@@ -3,12 +3,12 @@
  * Coordinates all memory types and provides unified interface
  */
 
-import { WorkingMemoryStore } from "./stores/working/index.js";
-import { EpisodicMemoryStore } from "./stores/episodic/index.js";
-import { SemanticMemoryStore } from "./stores/semantic/index.js";
-import { ProceduralMemoryStore } from "./stores/procedural/index.js";
-import { ProspectiveMemoryStore } from "./stores/prospective/index.js";
-import { EmotionalMemoryStore } from "./stores/emotional/index.js";
+import { WorkingMemoryStore } from "./stores/working-store.js";
+import { EpisodicMemoryStore } from "./stores/episodic-store.js";
+import { SemanticMemoryStore } from "./stores/semantic-store.js";
+import { ProceduralMemoryStore } from "./stores/procedural-store.js";
+import { ProspectiveMemoryStore } from "./stores/prospective-store.js";
+import { EmotionalMemoryStore } from "./stores/emotional-store.js";
 import type {
   MemoryManager,
   MemoryType,

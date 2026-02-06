@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { ProspectiveMemory } from "../../types.js";
+import type { ProspectiveMemory } from "../types.js";
 
 export interface ProspectiveMemoryStorage {
   memories: ProspectiveMemory[];

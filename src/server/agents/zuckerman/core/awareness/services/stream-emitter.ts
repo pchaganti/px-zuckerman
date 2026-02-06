@@ -1,5 +1,5 @@
 import type { StreamCallback, StreamEvent } from "@server/world/runtime/agents/types.js";
-import type { TaskStep } from "../../planning/tactical/index.js";
+import type { TaskStep } from "../../planning/tactical-executor.js";
 
 export class StreamEventEmitter {
   constructor(private stream?: StreamCallback) {}

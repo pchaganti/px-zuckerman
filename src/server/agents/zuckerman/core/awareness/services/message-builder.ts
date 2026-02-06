@@ -27,15 +27,10 @@ export class MessageBuilder {
         });
       }
     }
-
-    // Add current user message with relevant memories context
-    const userContent = relevantMemoriesText 
-      ? `${userMessage}${relevantMemoriesText}` 
-      : userMessage;
     
     messages.push({ 
       role: "system", 
-      content: userContent 
+      content: relevantMemoriesText 
     });
 
     return messages;

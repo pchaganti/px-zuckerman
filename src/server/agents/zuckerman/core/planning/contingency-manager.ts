@@ -1,20 +1,26 @@
 /**
- * Contingency Planning Agent
- * Role: You handle task failures. Given a failed task, decide what to do next.
+ * Contingency Planning - Fallback strategies
+ * Handles fallback plans when tasks fail with LLM-based decision making
  */
 
-import type { GoalTaskNode } from "../types.js";
+import type { GoalTaskNode } from "./types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 import { randomUUID } from "node:crypto";
 
+/**
+ * Fallback decision from LLM
+ */
 export interface FallbackDecision {
   shouldCreateFallback: boolean;
   fallbackTask?: GoalTaskNode;
   reasoning: string;
 }
 
-export class ContingencyAgent {
+/**
+ * Fallback Strategy Manager
+ */
+export class FallbackStrategyManager {
   private llmManager: LLMManager;
 
   constructor() {
@@ -22,17 +28,11 @@ export class ContingencyAgent {
   }
 
   /**
-   * Handle task failure - decide fallback using LLM
+   * Handle task failure - get fallback plan using LLM
    */
-  async handleFailure(
-    task: GoalTaskNode,
-    error: string
-  ): Promise<FallbackDecision> {
+  async handleFailure(task: GoalTaskNode, error: string): Promise<GoalTaskNode | null> {
     if (task.type !== "task") {
-      return {
-        shouldCreateFallback: false,
-        reasoning: "Can only create fallback for tasks",
-      };
+      return null;
     }
 
     try {
@@ -64,10 +64,7 @@ Progress: ${task.progress || 0}%`;
       const parsed = JSON.parse(jsonStr);
 
       if (!parsed.shouldCreateFallback) {
-        return {
-          shouldCreateFallback: false,
-          reasoning: parsed.reasoning || "No fallback needed",
-        };
+        return null;
       }
 
       // Create fallback task from LLM decision
@@ -93,17 +90,10 @@ Progress: ${task.progress || 0}%`;
         },
       };
 
-      return {
-        shouldCreateFallback: true,
-        fallbackTask,
-        reasoning: parsed.reasoning || "Fallback created",
-      };
+      return fallbackTask;
     } catch (error) {
-      console.warn(`[ContingencyAgent] Decision failed:`, error);
-      return {
-        shouldCreateFallback: false,
-        reasoning: "LLM decision failed, no fallback",
-      };
+      console.warn(`[FallbackStrategyManager] Decision failed:`, error);
+      return null;
     }
   }
 }

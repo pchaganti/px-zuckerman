@@ -1,23 +1,20 @@
 /**
  * Strategic Planning Manager
- * Orchestrates strategic planning with tree structure
+ * Orchestrates strategic planning with tree structure, LLM-based decomposition, and traversal
  */
 
 import { randomUUID } from "node:crypto";
-import type { GoalTaskNode, GoalTaskTree, TaskUrgency } from "../types.js";
-import type { MemoryManager } from "../../memory/types.js";
-import { TreeManager } from "./tree.js";
-import { StrategicAgent } from "./agent.js";
+import type { GoalTaskNode, GoalTaskTree, TaskUrgency } from "./types.js";
+import type { MemoryManager } from "../memory/types.js";
+import { TreeManager } from "./strategic-tree.js";
 
 export class StrategicManager {
   private treeManager: TreeManager;
-  private agent: StrategicAgent;
   private memoryManager: MemoryManager | null = null;
 
   constructor(memoryManager?: MemoryManager | null) {
     this.memoryManager = memoryManager || null;
     this.treeManager = new TreeManager();
-    this.agent = new StrategicAgent(this.memoryManager);
   }
 
   /**
@@ -25,52 +22,6 @@ export class StrategicManager {
    */
   setMemoryManager(memoryManager: MemoryManager): void {
     this.memoryManager = memoryManager;
-    this.agent.setMemoryManager(memoryManager);
-  }
-
-  /**
-   * Create goal from user message
-   * ENHANCED: Stores goal in semantic memory
-   */
-  async createGoal(
-    title: string,
-    description: string,
-    urgency: TaskUrgency,
-    focus: null,
-    conversationId?: string
-  ): Promise<GoalTaskNode> {
-    const goal: GoalTaskNode = {
-      id: randomUUID(),
-      type: "goal",
-      title,
-      description,
-      goalStatus: "active",
-      progress: 0,
-      source: "user",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      children: [],
-      order: 0,
-      metadata: {},
-    };
-
-    // Add to tree
-    this.treeManager.addNode(goal);
-
-    // Record goal creation in memory
-    if (this.memoryManager) {
-      this.memoryManager.onGoalCreated(goal.id, goal.title, goal.description, conversationId);
-    }
-
-    // Auto-decompose if needed
-    if (await this.agent.shouldDecompose(goal)) {
-      const decomposition = await this.agent.decomposeGoal(goal, urgency, null);
-      decomposition.children.forEach((child) => {
-        this.treeManager.addNode(child, goal.id);
-      });
-    }
-
-    return goal;
   }
 
   /**
@@ -122,13 +73,6 @@ export class StrategicManager {
    */
   getTree(): GoalTaskTree {
     return this.treeManager.getTree();
-  }
-
-  /**
-   * Initialize tree from existing structure
-   */
-  initializeTree(tree: GoalTaskTree): void {
-    this.treeManager.initializeTree(tree);
   }
 
   /**
@@ -206,30 +150,6 @@ export class StrategicManager {
   }
 
   /**
-   * Cancel task
-   */
-  cancelTask(nodeId: string): boolean {
-    const node = this.treeManager.getNode(nodeId);
-    if (!node) return false;
-
-    if (node.type === "goal") {
-      node.goalStatus = "cancelled";
-    } else {
-      node.taskStatus = "cancelled";
-    }
-    node.updatedAt = Date.now();
-
-    return true;
-  }
-
-  /**
-   * Get node by ID
-   */
-  getNode(nodeId: string): GoalTaskNode | null {
-    return this.treeManager.getNode(nodeId);
-  }
-
-  /**
    * Set active node
    */
   setActiveNode(nodeId: string | null): void {
@@ -242,51 +162,4 @@ export class StrategicManager {
   getActiveNode(): GoalTaskNode | null {
     return this.treeManager.getActiveNode();
   }
-
-  /**
-   * Decompose goal (manual trigger)
-   */
-  async decomposeGoal(nodeId: string, urgency: TaskUrgency, focus: null): Promise<boolean> {
-    const node = this.treeManager.getNode(nodeId);
-    if (!node || node.type !== "goal") return false;
-
-    if (await this.agent.shouldDecompose(node)) {
-      const decomposition = await this.agent.decomposeGoal(node, urgency, null);
-      decomposition.children.forEach((child) => {
-        this.treeManager.addNode(child, node.id);
-      });
-      return true;
-    }
-
-    return false;
-  }
-
-  /**
-   * Check and re-decompose goals if needed
-   */
-  async checkAndRedecomposeGoals(
-    urgency: TaskUrgency,
-    focus: null
-  ): Promise<number> {
-    // Use internal tree structure directly instead of getTree() which serializes
-    // Get all nodes from the tree manager's internal Map
-    const allNodes = this.treeManager.getAllNodes();
-    let redecomposedCount = 0;
-
-    // Check all active goals
-    for (const node of allNodes) {
-      if (node.type === "goal" && node.goalStatus === "active") {
-        if (await this.agent.shouldDecompose(node)) {
-          const decomposition = await this.agent.decomposeGoal(node, urgency, null);
-          decomposition.children.forEach((child) => {
-            this.treeManager.addNode(child, node.id);
-          });
-          redecomposedCount++;
-        }
-      }
-    }
-
-    return redecomposedCount;
-  }
-
 }

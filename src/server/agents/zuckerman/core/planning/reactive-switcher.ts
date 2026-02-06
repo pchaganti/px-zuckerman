@@ -1,19 +1,36 @@
 /**
- * Reactive Planning Agent
- * Role: You handle task switching decisions. Given current and new tasks, decide if we should switch.
+ * Reactive Planning - Task switching
+ * Handles task switching logic with LLM-based continuity assessment
  */
 
-import type { GoalTaskNode } from "../types.js";
+import type { GoalTaskNode } from "./types.js";
 import type { LLMMessage } from "@server/world/providers/llm/types.js";
 import { LLMManager } from "@server/world/providers/llm/index.js";
 
+/**
+ * Task context for resumption
+ */
+export interface TaskContext {
+  taskId: string;
+  savedAt: number;
+  context: Record<string, unknown>;
+}
+
+/**
+ * Switching decision from LLM
+ */
 export interface SwitchingDecision {
   shouldSwitch: boolean;
   reasoning: string;
   continuityStrength?: number;
 }
 
-export class SwitchingAgent {
+/**
+ * Task Switcher
+ */
+export class TaskSwitcher {
+  private savedContexts: Map<string, TaskContext> = new Map();
+  private switchHistory: Array<{ from: string; to: string; timestamp: number }> = [];
   private llmManager: LLMManager;
 
   constructor() {
@@ -21,9 +38,9 @@ export class SwitchingAgent {
   }
 
   /**
-   * Decide if should switch tasks using LLM
+   * Determine if should switch from current task to new task (LLM-based)
    */
-  async decideSwitch(
+  async shouldSwitchWithLLM(
     currentTask: GoalTaskNode | null,
     newTask: GoalTaskNode,
     currentFocus: null
@@ -85,11 +102,36 @@ New Task:
           : undefined,
       };
     } catch (error) {
-      console.warn(`[SwitchingAgent] Decision failed:`, error);
+      console.warn(`[TaskSwitcher] Decision failed:`, error);
       return {
         shouldSwitch: true,
         reasoning: "LLM decision failed, defaulting to switch",
       };
     }
+  }
+
+  /**
+   * Get switch history
+   */
+  getSwitchHistory(): Array<{ from: string; to: string; timestamp: number }> {
+    return [...this.switchHistory];
+  }
+
+  /**
+   * Save task context for resumption
+   */
+  saveTaskContext(taskId: string, context: Record<string, unknown>): void {
+    this.savedContexts.set(taskId, {
+      taskId,
+      savedAt: Date.now(),
+      context,
+    });
+  }
+
+  /**
+   * Clear saved context for task
+   */
+  clearContext(taskId: string): void {
+    this.savedContexts.delete(taskId);
   }
 }

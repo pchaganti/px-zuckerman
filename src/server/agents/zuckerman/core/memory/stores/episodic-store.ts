@@ -7,7 +7,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { getAgentMemoryStorePath } from "@server/world/homedir/paths.js";
-import type { EpisodicMemory, EmotionalTag } from "../../types.js";
+import type { EpisodicMemory, EmotionalTag } from "../types.js";
 
 export interface EpisodicMemoryStorage {
   memories: EpisodicMemory[];

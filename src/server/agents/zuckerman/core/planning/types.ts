@@ -3,8 +3,6 @@
  * Task queue management and planning types
  */
 
-import type { TaskStep } from "./tactical/steps.js";
-
 /**
  * Task urgency level
  */
@@ -28,7 +26,7 @@ export type NodeType = "goal" | "task";
 /**
  * Goal status
  */
-export type GoalStatus = "active" | "completed" | "paused" | "cancelled";
+export type GoalStatus = "active" | "completed" | "cancelled";
 
 
 
@@ -44,23 +42,6 @@ export interface PlanningStats {
 }
 
 /**
- * Pending interruption - waiting for user confirmation
- * UPDATED: Now uses GoalTaskNode instead of Task
- */
-export interface PendingInterruption {
-  currentNode: GoalTaskNode;
-  newNode: GoalTaskNode;
-  originalUserMessage: string; // Original user message (exact wording)
-  assessment: {
-    continuityStrength?: number;
-    shouldSwitch: boolean;
-    reasoning: string;
-  };
-  createdAt: number;
-  conversationId?: string;
-}
-
-/**
  * Unified Goal/Task Node
  * Replaces both Task and separate Goal entities in tree structure
  */
@@ -72,7 +53,6 @@ export interface GoalTaskNode {
   
   // Goal-specific fields (only when type === "goal")
   goalStatus?: GoalStatus;
-  targetDate?: number; // Optional deadline for goal
   progress?: number; // 0-100, calculated from children
   
   // Task-specific fields (only when type === "task")
@@ -93,7 +73,6 @@ export interface GoalTaskNode {
   // Execution tracking
   result?: unknown; // Execution result
   error?: string; // Error message if failed
-  prospectiveMemoryId?: string; // Link to prospective memory
   
   // Metadata
   metadata?: Record<string, unknown>;
@@ -118,16 +97,6 @@ export interface DecompositionResult {
   parentNodeId: string;
   children: GoalTaskNode[];
   executionOrder: number[]; // Order indices for children
-}
-
-/**
- * Execution Order Result
- * Calculated execution order from tree traversal
- */
-export interface ExecutionOrderResult {
-  path: string[]; // Ordered node IDs (leaf tasks only)
-  readyNodes: GoalTaskNode[]; // Nodes ready to execute (dependencies satisfied)
-  blockedNodes: GoalTaskNode[]; // Nodes blocked by dependencies
 }
 
 /**
