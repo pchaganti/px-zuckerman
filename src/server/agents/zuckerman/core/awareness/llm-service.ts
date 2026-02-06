@@ -36,6 +36,8 @@ export class LLMService {
         messages.push({
           role: msg.role === "user" ? "user" : "assistant",
           content: msg.content,
+          toolCalls: msg.toolCalls,
+          toolCallId: msg.toolCallId,
         });
       }
     }
@@ -48,7 +50,14 @@ export class LLMService {
       });
     }
 
-    return messages;
+    // Filter out empty messages
+    return messages.filter(msg => {
+      if (!msg.content || msg.content.trim().length === 0) {
+        console.log(`[LLMService] Empty message:`, msg);
+        return false;
+      }
+      return true;
+    });
   }
 
   /**
