@@ -1,18 +1,18 @@
 import type { LLMModel } from "@server/world/providers/llm/index.js";
 
-export interface ValidationResult {
+export interface CriticismResult {
   satisfied: boolean;
   reason: string;
   missing: string[];
 }
 
-export class ValidationService {
+export class CriticismService {
   constructor(private judgeModel: LLMModel) {}
 
   async validate(params: {
     userRequest: string;
     systemResult: string;
-  }): Promise<ValidationResult> {
+  }): Promise<CriticismResult> {
     const prompt = `User asked: "${params.userRequest}"
 
 System did: ${params.systemResult}
@@ -33,12 +33,12 @@ Respond in JSON:
       });
       return this.parseResponse(response.content);
     } catch (error) {
-      console.warn(`[ValidationService] Validation failed:`, error);
+      console.warn(`[CriticismService] Validation failed:`, error);
       return { satisfied: false, reason: "Validation failed", missing: [] };
     }
   }
 
-  private parseResponse(content: string): ValidationResult {
+  private parseResponse(content: string): CriticismResult {
     try {
       // Extract JSON (handle markdown code blocks)
       let jsonStr = content.trim();
@@ -55,7 +55,7 @@ Respond in JSON:
         missing: Array.isArray(parsed.missing) ? parsed.missing.map(String) : [],
       };
     } catch (error) {
-      console.warn(`[ValidationService] Parse failed:`, error);
+      console.warn(`[CriticismService] Parse failed:`, error);
       // Fallback: infer from text
       const lower = content.toLowerCase();
       const satisfied = lower.includes('"satisfied": true') || 

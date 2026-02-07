@@ -1,7 +1,7 @@
 import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
 import { LLMModel } from "@server/world/providers/llm/index.js";
 import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
-import type { RunContext } from "./context.js";
+import type { RunContext } from "@server/world/providers/llm/context.js";
 import type { ConversationState } from "@server/agents/zuckerman/conversations/types.js";
 
 export type ToolCall = {

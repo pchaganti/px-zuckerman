@@ -1,7 +1,7 @@
 import type { LLMMessage, LLMTool } from "@server/world/providers/llm/types.js";
 import type { SecurityContext } from "@server/world/execution/security/types.js";
 import type { ConversationId } from "@server/agents/zuckerman/conversations/types.js";
-import type { UnifiedMemoryManager } from "../memory/manager.js";
+import type { UnifiedMemoryManager } from "@server/agents/zuckerman/core/memory/manager.js";
 import type { LLMModel } from "@server/world/providers/llm/index.js";
 import type { StreamEventEmitter } from "@server/world/communication/stream-emitter.js";
 import type { ToolRegistry } from "@server/agents/zuckerman/tools/registry.js";

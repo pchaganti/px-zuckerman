@@ -13,7 +13,7 @@ import { agentDiscovery } from "./discovery.js";
  * Agent registry mapping agent IDs to their runtime classes
  * Uses AgentService as the public API, which wraps internal implementation
  */
-export const AGENT_REGISTRY: Record<string, new () => AgentRuntime> = {
+export const AGENT_REGISTRY: Record<string, new (agentId: string) => AgentRuntime> = {
   zuckerman: AgentService,
 };
 
@@ -34,6 +34,6 @@ export function getRegisteredAgentIds(): string[] {
 /**
  * Get agent runtime class by ID
  */
-export function getAgentRuntimeClass(agentId: string): (new () => AgentRuntime) | undefined {
+export function getAgentRuntimeClass(agentId: string): (new (agentId: string) => AgentRuntime) | undefined {
   return AGENT_REGISTRY[agentId];
 }

@@ -2,7 +2,9 @@ import type { AgentRuntime, AgentRunParams, AgentRunResult } from "@server/world
 import type { ConversationId, ConversationState, Conversation, ConversationKey, ConversationType, ConversationLabel } from "./conversations/types.js";
 import { ConversationManager } from "./conversations/index.js";
 import { ConversationRouter } from "./conversations/router.js";
-import { Awareness } from "./core/awareness/runtime.js";
+import { Self } from "./core/self/self.js";
+import { IdentityLoader } from "./core/identity/identity-loader.js";
+import { agentDiscovery } from "@server/agents/discovery.js";
 
 /**
  * Public API for Zuckerman agent
@@ -11,16 +13,27 @@ import { Awareness } from "./core/awareness/runtime.js";
  * Implements AgentRuntime interface to work with AgentRuntimeFactory
  */
 export class AgentService implements AgentRuntime {
-  private readonly runtime: Awareness;
+  private readonly runtime: Self;
   private readonly conversationManager: ConversationManager;
   private readonly conversationRouter: ConversationRouter;
-  readonly agentId = "zuckerman";
+  private readonly identityLoader: IdentityLoader;
+  private readonly agentDir: string;
+  readonly agentId: string;
 
-  constructor() {
+  constructor(agentId: string) {
+    this.agentId = agentId;
     // AgentService always creates its own ConversationManager internally
     this.conversationManager = new ConversationManager(this.agentId);
     this.conversationRouter = new ConversationRouter(this.agentId, this.conversationManager);
-    this.runtime = new Awareness(this.conversationManager);
+    this.runtime = new Self(this.agentId, this.conversationManager);
+    this.identityLoader = new IdentityLoader();
+    
+    // Get agent directory from discovery service
+    const metadata = agentDiscovery.getMetadata(this.agentId);
+    if (!metadata) {
+      throw new Error(`Agent "${this.agentId}" not found in discovery service`);
+    }
+    this.agentDir = metadata.agentDir;
   }
 
   /**
@@ -41,14 +54,18 @@ export class AgentService implements AgentRuntime {
    * Load agent prompts (for inspection/debugging)
    */
   async loadPrompts(): Promise<{ files: Map<string, string> }> {
-    return this.runtime.loadPrompts();
+    const prompts = await this.identityLoader.loadPrompts(this.agentDir);
+    return { files: prompts.files };
   }
 
   /**
    * Clear caches (for hot reload)
    */
   clearCache(): void {
-    this.runtime.clearCache();
+    // Clear identity loader cache if available
+    if (this.identityLoader.clearCache) {
+      this.identityLoader.clearCache(this.agentDir);
+    }
   }
 
   /**

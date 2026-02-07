@@ -1,2 +1,2 @@
-export { ValidationService } from "./validation-service.js";
-export type { ValidationResult } from "./validation-service.js";
+export { CriticismService } from "../criticism/criticism-service.js";
+export type { CriticismResult } from "../criticism/criticism-service.js";

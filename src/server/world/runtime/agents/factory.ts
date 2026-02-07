@@ -12,7 +12,7 @@ export interface AgentRuntimeFactoryOptions {
 /**
  * Check if a class is a valid AgentRuntime implementation
  */
-function isValidRuntimeClass(cls: unknown): cls is new () => AgentRuntime {
+function isValidRuntimeClass(cls: unknown): cls is new (agentId: string) => AgentRuntime {
   if (typeof cls !== "function") {
     return false;
   }
@@ -121,7 +121,7 @@ export class AgentRuntimeFactory {
       }
 
       // Create runtime instance (AgentService creates ConversationManager internally)
-      const runtime = new RuntimeClass();
+      const runtime = new RuntimeClass(agentId);
       
       // Initialize the runtime if it has an initialize method
       if (runtime.initialize) {
