@@ -43,8 +43,8 @@ const defaultTraitMappings: Record<string, Record<ModelTrait, string>> = {
     largeContext: "claude-sonnet-4-5",
   },
   openai: {
-    fastCheap: "gpt-4o-mini",
-    cheap: "gpt-4o-mini",
+    fastCheap: "gpt-5.2",
+    cheap: "gpt-5.2",
     fast: "gpt-4o-mini",
     highQuality: "gpt-5.2",
     largeContext: "gpt-5.2",

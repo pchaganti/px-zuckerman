@@ -72,18 +72,29 @@ export function createTerminalTool(): Tool {
             type: "string",
             description: "Working directory (optional). If not specified, uses current working directory.",
           },
+          timeout: {
+            type: "number",
+            description: "Timeout in milliseconds. You MUST always specify a timeout value to prevent commands from hanging indefinitely. Consider the expected duration of the command and add appropriate buffer time. For quick commands (ls, cat, grep), use 5000-10000ms. For longer operations (builds, installs), use 300000-600000ms (5-10 minutes).",
+          },
         },
-        required: ["command"],
+        required: ["command", "timeout"],
       },
     },
     handler: async (params, securityContext, executionContext) => {
       try {
-        const { command, args, cwd } = params;
+        const { command, args, cwd, timeout } = params;
         
         if (typeof command !== "string") {
           return {
             success: false,
             error: "command must be a string",
+          };
+        }
+
+        if (typeof timeout !== "number" || timeout <= 0) {
+          return {
+            success: false,
+            error: "timeout must be a positive number",
           };
         }
 
@@ -113,10 +124,17 @@ export function createTerminalTool(): Tool {
           cwd: typeof cwd === "string" ? cwd : undefined,
           securityContext: securityContext
             ? {
-                executionPolicy: securityContext.executionPolicy,
+                executionPolicy: {
+                  ...(securityContext.executionPolicy || {}),
+                  timeout,
+                },
                 sandboxContainerName: securityContext.sandboxContainerName,
               }
-            : undefined,
+            : {
+                executionPolicy: {
+                  timeout,
+                },
+              },
         });
 
         return {
