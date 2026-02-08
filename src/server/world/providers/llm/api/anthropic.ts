@@ -34,6 +34,7 @@ export class AnthropicProvider implements LLMProvider {
       temperature = 1.0,
       maxTokens,
       tools,
+      responseFormat,
     } = params;
 
     const requestBody = toAnthropicRequest({

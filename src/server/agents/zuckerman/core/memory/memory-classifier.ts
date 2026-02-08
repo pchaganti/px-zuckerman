@@ -91,15 +91,10 @@ Return ONLY valid JSON object, no other text.`;
       messages,
       temperature: 0.3, // Low temperature for consistent remembering
       maxTokens: 500, // Small response for remembering
+      responseFormat: "json_object",
     });
 
-    const content = response.content.trim();
-    
-    // Parse JSON object grouped by categories
-    // Remove markdown code blocks if present
-    const jsonMatch = content.match(/```(?:json)?\s*(\{.*?\})\s*```/s);
-    const jsonStr = jsonMatch ? jsonMatch[1] : content;
-    const parsed = JSON.parse(jsonStr);
+    const parsed = JSON.parse(String(response.content));
     
     // Validate structure - should be an object
     if (typeof parsed !== "object" || Array.isArray(parsed)) {

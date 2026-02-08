@@ -30,6 +30,7 @@ Respond in JSON:
       const response = await this.judgeModel.call({
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
+        responseFormat: "json_object",
       });
       return this.parseResponse(response.content);
     } catch (error) {
@@ -40,15 +41,7 @@ Respond in JSON:
 
   private parseResponse(content: string): CriticismResult {
     try {
-      // Extract JSON (handle markdown code blocks)
-      let jsonStr = content.trim();
-      const codeBlockMatch = jsonStr.match(/```(?:json)?\s*(\{[\s\S]*\})\s*```/);
-      if (codeBlockMatch) jsonStr = codeBlockMatch[1];
-      
-      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonMatch) jsonStr = jsonMatch[0];
-
-      const parsed = JSON.parse(jsonStr);
+      const parsed = JSON.parse(String(content));
       return {
         satisfied: Boolean(parsed.satisfied),
         reason: String(parsed.reason || "No reason provided"),
@@ -56,12 +49,7 @@ Respond in JSON:
       };
     } catch (error) {
       console.warn(`[CriticismService] Parse failed:`, error);
-      // Fallback: infer from text
-      const lower = content.toLowerCase();
-      const satisfied = lower.includes('"satisfied": true') || 
-                       lower.includes("satisfied: true") ||
-                       (lower.includes("yes") && !lower.includes("not"));
-      return { satisfied, reason: "Could not parse response", missing: [] };
+      return { satisfied: false, reason: "Could not parse response", missing: [] };
     }
   }
 }

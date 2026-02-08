@@ -130,14 +130,13 @@ export class LLMService {
     if (this.streamEmitter && result.content) {
       // Emit as chunks with small delays to simulate streaming for better UX
       const chunkSize = 5; // Very small chunks for smoother appearance
-      const content = result.content;
       
-      for (let i = 0; i < content.length; i += chunkSize) {
-        const chunk = content.slice(i, i + chunkSize);
+      for (let i = 0; i < result.content.length; i += chunkSize) {
+        const chunk = result.content.slice(i, i + chunkSize);
         try {
           await this.streamEmitter.emitToken(this.runId, chunk);
           // Progressive delay: faster at start, slower as we go (for better UX)
-          const delay = i < content.length / 2 ? 15 : 25;
+          const delay = i < result.content.length / 2 ? 15 : 25;
           await new Promise(resolve => setTimeout(resolve, delay));
         } catch (err) {
           // If stream callback fails, log but continue

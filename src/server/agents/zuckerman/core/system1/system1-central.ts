@@ -3,6 +3,7 @@ import { LLMService } from "@server/world/providers/llm/llm-service.js";
 import { ToolService } from "../../tools/index.js";
 import { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import { CriticismService } from "./criticism-service.js";
+import { ContextBuilder } from "./context-builder.js";
 
 export class System1 {
   constructor(
@@ -10,10 +11,32 @@ export class System1 {
     private context: RunContext
   ) {}
 
-  async run(): Promise<{ runId: string; response: string; tokensUsed?: number }> {
+  async run(options?: { useContextBuilder?: boolean }): Promise<{ runId: string; response: string; tokensUsed?: number }> {
     const llmService = new LLMService(this.context.llmModel, this.context.streamEmitter, this.context.runId);
     const toolService = new ToolService();
     const criticismService = new CriticismService(this.context.llmModel);
+
+    // Optionally build context first
+    let enrichedMessage = this.context.message;
+    if (options?.useContextBuilder) {
+      try {
+        const contextBuilder = new ContextBuilder(this.conversationManager, this.context);
+        const contextResult = await contextBuilder.buildContext(this.context.message);
+        
+        if (contextResult.gatheredInformation.length > 0) {
+          await this.conversationManager.addMessage(
+            this.context.conversationId,
+            "system",
+            `Context gathered:\n${contextResult.enrichedContext}`,
+            { runId: this.context.runId }
+          );
+
+          enrichedMessage = `${this.context.message}\n\n[Context: ${contextResult.enrichedContext}]`;
+        }
+      } catch (error) {
+        console.warn(`[System1] Context building failed, continuing without it:`, error);
+      }
+    }
 
     while (true) {
       const conversation = this.conversationManager.getConversation(this.context.conversationId);
@@ -27,7 +50,7 @@ export class System1 {
       if (!result.toolCalls?.length) {
         try {
           const validation = await criticismService.run({
-            userRequest: this.context.message,
+            userRequest: enrichedMessage,
             systemResult: result.content,
           });
 

@@ -74,7 +74,7 @@ export async function arbitrate(
       responseFormat: "json_object",
     });
 
-    const parsed = JSON.parse(response.content);
+    const parsed = JSON.parse(String(response.content));
     
     const validActions = Object.values(Action);
     let action: Action | Action[];

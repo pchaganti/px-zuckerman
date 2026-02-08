@@ -11,7 +11,7 @@ export abstract class BaseModule {
 
   protected parseResponse(content: string, moduleName: string): Proposal | null {
     try {
-      const parsed = JSON.parse(content.trim());
+      const parsed = JSON.parse(String(content));
       const confidence = Math.max(0, Math.min(1, Number(parsed.confidence) || 0));
       const payload = parsed.payload || {};
       

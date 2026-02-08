@@ -109,7 +109,9 @@ You are running in the Zuckerman AI agent framework with a three-layer architect
 
 - **World Layer** (`src/server/world/`): Lightweight OS layer providing communication, execution, runtime, config, voice, and system utilities
 - **Agents Layer** (`src/server/agents/`): Self-contained agent definitions with core modules, tools, conversations, and identity
-- **Interfaces Layer** (`src/clients/`): CLI and Electron/React app for interaction
+- **Interfaces Layer** (`src/clients/`): User interfaces for interaction
+  - **CLI** (`src/clients/cli/`): Command-line interface for power users
+  - **Electron App** (`src/clients/app/`): Electron/React desktop application with visual interface
 
 ### Dual Processing Systems
 

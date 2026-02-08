@@ -150,7 +150,7 @@ export class Self {
       } else {
         console.log(`[Self] Routing to System1`);
         const system1 = new System1(this.conversationManager, context);
-        return await system1.run();
+        return await system1.run({useContextBuilder: true});
       }
     } catch (err) {
       console.error(`[ZuckermanRuntime] Error in run:`, err);

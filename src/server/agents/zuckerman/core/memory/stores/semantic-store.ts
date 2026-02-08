@@ -140,18 +140,49 @@ export class SemanticMemoryStore {
         return;
       }
 
-      const data: SemanticMemoryStorage = JSON.parse(content);
+      // Try to fix common JSON issues before parsing
+      let cleanedContent = content.trim();
+      
+      // Remove trailing commas before closing brackets/braces
+      cleanedContent = cleanedContent.replace(/,(\s*[}\]])/g, "$1");
+      
+      // Try parsing
+      let data: SemanticMemoryStorage;
+      try {
+        data = JSON.parse(cleanedContent);
+      } catch (parseError) {
+        // If parsing still fails, try to recover by extracting valid JSON structure
+        console.warn(`[SemanticMemoryStore] JSON parse failed, attempting recovery:`, parseError);
+        
+        // Try to extract just the memories array if the structure is broken
+        const memoriesMatch = cleanedContent.match(/"memories"\s*:\s*\[([\s\S]*?)\]/);
+        if (memoriesMatch) {
+          try {
+            const memoriesArray = JSON.parse(`[${memoriesMatch[1]}]`);
+            data = { memories: memoriesArray };
+          } catch {
+            // If recovery fails, start fresh
+            console.error(`[SemanticMemoryStore] Recovery failed, starting with empty store`);
+            return;
+          }
+        } else {
+          // No valid structure found, start fresh
+          console.error(`[SemanticMemoryStore] Invalid JSON structure, starting with empty store`);
+          return;
+        }
+      }
       
       // Validate and load memories
       if (Array.isArray(data.memories)) {
         for (const memory of data.memories) {
-          if (memory.id && memory.type === "semantic") {
+          if (memory && typeof memory === "object" && memory.id && memory.type === "semantic") {
             this.memories.set(memory.id, memory);
           }
         }
       }
     } catch (error) {
       console.warn(`[SemanticMemoryStore] Failed to load memories from ${this.storagePath}:`, error);
+      // Don't throw - allow the store to start empty
     }
   }
 
