@@ -1,6 +1,6 @@
 import { writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import type { Proposal } from "./types.js";
+import type { Proposal, Decision } from "./types.js";
 import type { ConversationManager } from "@server/agents/zuckerman/conversations/index.js";
 import type { RunContext } from "@server/world/providers/llm/context.js";
 
@@ -9,7 +9,9 @@ export async function writeProposalsToFile(
   userMessage: string,
   stateSummary: string,
   conversationManager: ConversationManager,
-  context: RunContext
+  context: RunContext,
+  decision?: Decision,
+  response?: string
 ): Promise<void> {
   try {
     const proposalsDir = join(context.homedir, "system2", "proposals");
@@ -34,6 +36,13 @@ export async function writeProposalsToFile(
       userMessage,
       systemPrompt: context.systemPrompt,
       state,
+      decision: decision ? {
+        action: decision.action,
+        payload: decision.payload,
+        stateUpdates: decision.stateUpdates,
+        reasoning: decision.reasoning,
+      } : undefined,
+      response,
       conversation: {
         messages: conversation?.messages.map(m => ({
           role: m.role,

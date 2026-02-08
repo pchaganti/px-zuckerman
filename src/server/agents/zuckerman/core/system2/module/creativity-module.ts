@@ -91,6 +91,7 @@ Output JSON:
         reasoning: String(parsed.reasoning || "No reasoning provided"),
       };
     } catch (error) {
+      console.log(`[CreativityModule] Parse failed:`, content);
       console.warn(`[CreativityModule] Parse failed:`, error);
       return null;
     }

@@ -2,27 +2,18 @@ import type { LLMModel } from "@server/world/providers/llm/index.js";
 import type { Proposal, Decision, WorkingMemory, StateUpdates } from "./types.js";
 import { Action } from "./types.js";
 
-interface RecentMessage {
-  role: string;
-  content: string;
-  timestamp?: number;
-}
-
 const ARBITRATOR_PROMPT = `
 You are the Global Workspace — the central conscious brain of the agent.
 
-Current working memory state:
+Current working memory state (includes goals, memories, and newMessages):
 {state}
 
 Proposals from modules:
 {proposals}
 
-Recent messages since last iteration:
-{recentMessages}
-
 Your task:
 - Read all proposals carefully
-- Review recent messages to learn what happened (successes, failures, patterns)
+- Review recent messages (in state.newMessages) to learn what happened (successes, failures, patterns)
 - Decide the next action(s) based on the proposals and current state
 - You can combine insights from multiple proposals
 - You can return a SINGLE action or an ARRAY of actions to execute sequentially
@@ -60,24 +51,18 @@ Output ONLY valid JSON:
 
 export async function arbitrate(
   proposals: Proposal[],
-  memory: WorkingMemory,
+  state: WorkingMemory & { newMessages?: Array<{ role: string; content: string; timestamp?: number }> },
   judgeModel: LLMModel,
-  systemPrompt: string,
-  recentMessages: RecentMessage[] = []
+  systemPrompt: string
 ): Promise<Decision | null> {
   if (proposals.length === 0) {
     console.warn("[Arbitrator] No proposals found");
     return null;
   }
 
-  const recentMessagesText = recentMessages.length > 0
-    ? recentMessages.map(m => `[${m.role}]: ${m.content?.substring(0, 300) || ''}`).join('\n')
-    : 'No new messages since last iteration';
-
   const prompt = ARBITRATOR_PROMPT
     .replace('{proposals}', JSON.stringify(proposals, null, 2))
-    .replace('{state}', JSON.stringify(memory, null, 2))
-    .replace('{recentMessages}', recentMessagesText);
+    .replace('{state}', JSON.stringify(state, null, 2));
 
   try {
     const response = await judgeModel.call({

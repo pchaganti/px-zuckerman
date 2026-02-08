@@ -66,6 +66,7 @@ Output ONLY valid JSON matching the Proposal structure:
         reasoning: String(parsed.reasoning || "No reasoning provided"),
       };
     } catch (error) {
+      console.log(`[InteractionModule] Parse failed:`, content);
       console.warn(`[InteractionModule] Parse failed:`, error);
       return null;
     }

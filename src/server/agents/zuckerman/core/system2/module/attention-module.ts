@@ -67,6 +67,7 @@ Output ONLY valid JSON matching the Proposal structure:
         reasoning: String(parsed.reasoning || "No reasoning provided"),
       };
     } catch (error) {
+      console.log(`[AttentionModule] Parse failed:`, content);
       console.warn(`[AttentionModule] Parse failed:`, error);
       return null;
     }

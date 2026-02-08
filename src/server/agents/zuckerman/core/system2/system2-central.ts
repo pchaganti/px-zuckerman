@@ -65,18 +65,26 @@ export class System2 {
       const newMessages = conversation?.messages.slice(lastMessageCount) || [];
       lastMessageCount = currentMessageCount;
 
-      // Collect proposals - pass state directly
-      const state = JSON.stringify(this.memoryManager.getState(), null, 2);
+      // Collect proposals - pass state with newMessages
+      const workingMemory = this.memoryManager.getState();
+      const stateWithMessages = {
+        ...workingMemory,
+        newMessages: newMessages.map(m => ({
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })),
+      };
+      const state = JSON.stringify(stateWithMessages, null, 2);
       const proposals = await this.collectProposals(this.context.message, state);
       console.log(`[System2] Collected ${proposals.length} proposals`);
 
-      // Arbitrate - pass new messages so it can learn and create memories
+      // Arbitrate - state includes newMessages
       const decision = await arbitrate(
         proposals,
-        this.memoryManager.getState(),
+        stateWithMessages,
         this.context.llmModel,
-        this.context.systemPrompt,
-        newMessages
+        this.context.systemPrompt
       );
 
       if (!decision) {
@@ -85,6 +93,9 @@ export class System2 {
       }
 
       console.log(`[System2] Decision: ${Array.isArray(decision.action) ? decision.action.join(', ') : decision.action}`);
+
+      // Write debug info for this iteration
+      await writeProposalsToFile(proposals, this.context.message, state, this.conversationManager, this.context, decision);
 
       // Execute decision
       const shouldContinue = await this.executeDecision(decision);
@@ -110,6 +121,23 @@ export class System2 {
 
     const response = lastMessage?.content || "I apologize, but I couldn't generate a response.";
     console.log(`[System2] Run completed after ${iteration} iterations`);
+    
+    // Write final debug info with response
+    const finalWorkingMemory = this.memoryManager.getState();
+    const finalConversation = this.conversationManager.getConversation(this.context.conversationId);
+    const finalNewMessages = finalConversation?.messages.slice(lastMessageCount) || [];
+    const finalStateWithMessages = {
+      ...finalWorkingMemory,
+      newMessages: finalNewMessages.map(m => ({
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      })),
+    };
+    const finalState = JSON.stringify(finalStateWithMessages, null, 2);
+    const finalProposals = await this.collectProposals(this.context.message, finalState);
+    await writeProposalsToFile(finalProposals, this.context.message, finalState, this.conversationManager, this.context, undefined, response);
+    
     await this.context.streamEmitter.emitLifecycleEnd(this.context.runId, undefined, response);
 
     return {
@@ -129,9 +157,6 @@ export class System2 {
     for (const result of results) {
       if (result) proposals.push(result);
     }
-
-    // Write proposals to file for inspection
-    await writeProposalsToFile(proposals, userMessage, stateSummary, this.conversationManager, this.context);
 
     return proposals;
   }
